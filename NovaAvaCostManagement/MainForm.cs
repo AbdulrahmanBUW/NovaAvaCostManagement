@@ -5,13 +5,12 @@ using System.Data;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace NovaAvaCostManagement
 {
     /// <summary>
-    /// Improved main form with async operations and proper resource management
+    /// Main form for NOVA AVA Cost Management application
     /// </summary>
     public partial class MainForm : Form
     {
@@ -23,137 +22,47 @@ namespace NovaAvaCostManagement
         private ToolStripStatusLabel statusLabel;
         private ToolStripProgressBar progressBar;
         private TextBox searchBox;
-        private Timer searchDebounceTimer;
-        private BindingSource bindingSource;
-        private bool isDirty = false;
-
-        // Constants
-        private const int SEARCH_DEBOUNCE_MS = 300;
-        private const int MAX_LOG_MESSAGES = 1000;
 
         public MainForm()
         {
+
             InitializeCustomComponents();
-            InitializeProjectManager();
-            SetupEventHandlers();
+            projectManager = new ProjectManager();
+            projectManager.CreateNewProject();
+            RefreshDataGrid();
         }
 
         /// <summary>
-        /// Initialize project manager with error handling
-        /// </summary>
-        private void InitializeProjectManager()
-        {
-            try
-            {
-                projectManager = new ProjectManager();
-                projectManager.PropertyChanged += ProjectManager_PropertyChanged;
-                projectManager.CreateNewProject();
-                RefreshDataGrid();
-            }
-            catch (Exception ex)
-            {
-                ShowError("Failed to initialize project manager", ex);
-            }
-        }
-
-        /// <summary>
-        /// Setup event handlers with proper disposal
-        /// </summary>
-        private void SetupEventHandlers()
-        {
-            this.FormClosing += MainForm_FormClosing;
-            this.Load += MainForm_Load;
-
-            // Setup search debouncing
-            searchDebounceTimer = new Timer();
-            searchDebounceTimer.Interval = SEARCH_DEBOUNCE_MS;
-            searchDebounceTimer.Tick += SearchDebounceTimer_Tick;
-        }
-
-        /// <summary>
-        /// Initialize UI components with improved layout
+        /// Initialize custom form components
         /// </summary>
         private void InitializeCustomComponents()
         {
-            this.Text = "NOVA AVA Cost Management System";
-            this.Size = new Size(1200, 700);
-            this.StartPosition = FormStartPosition.CenterScreen;
-            this.MinimumSize = new Size(800, 500);
-            this.Icon = SystemIcons.Application;
+            this.Size = new Size(600, 650);  // Reduce height
+            this.StartPosition = FormStartPosition.CenterParent;
+            this.FormBorderStyle = FormBorderStyle.Sizable;  // Make resizable
+            this.MaximizeBox = true;  // Allow maximize
+            this.MinimizeBox = true;  // Allow minimize
+            this.MinimumSize = new Size(500, 400);  // Set minimum size
 
-            // Use TableLayoutPanel for better resizing
-            var mainLayout = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                RowCount = 4,
-                ColumnCount = 1
-            };
+            // Add scroll support
+            this.AutoScroll = true;
+            this.AutoScrollMinSize = new Size(580, 650);
 
-            // Create components
+            // Create menu strip
             CreateMenuStrip();
+
+            // Create toolbar
             CreateToolStrip();
+
+            // Create main content area
             CreateMainContent();
+
+            // Create status strip
             CreateStatusStrip();
-
-            // Add to layout
-            mainLayout.Controls.Add(menuStrip, 0, 0);
-            mainLayout.Controls.Add(toolStrip, 0, 1);
-            mainLayout.Controls.Add(CreateMainPanel(), 0, 2);
-            mainLayout.Controls.Add(statusStrip, 0, 3);
-
-            // Set row styles
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-            this.Controls.Add(mainLayout);
-        }
-
-        private Panel CreateMainPanel()
-        {
-            var panel = new Panel { Dock = DockStyle.Fill };
-
-            // Add search panel
-            var searchPanel = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 35,
-                Padding = new Padding(5)
-            };
-
-            var searchLabel = new Label
-            {
-                Text = "Search:",
-                Location = new Point(5, 8),
-                Size = new Size(50, 20)
-            };
-
-            searchBox = new TextBox
-            {
-                Location = new Point(60, 5),
-                Size = new Size(250, 25),
-                Font = new Font("Segoe UI", 9F)
-            };
-            searchBox.TextChanged += SearchBox_TextChanged;
-
-            var clearButton = new Button
-            {
-                Text = "Clear",
-                Location = new Point(315, 5),
-                Size = new Size(60, 25)
-            };
-            clearButton.Click += (s, e) => { searchBox.Clear(); };
-
-            searchPanel.Controls.AddRange(new Control[] { searchLabel, searchBox, clearButton });
-            panel.Controls.Add(searchPanel);
-            panel.Controls.Add(dataGridView);
-
-            return panel;
         }
 
         /// <summary>
-        /// Create menu strip with all options
+        /// Create menu strip
         /// </summary>
         private void CreateMenuStrip()
         {
@@ -161,205 +70,122 @@ namespace NovaAvaCostManagement
 
             // File menu
             var fileMenu = new ToolStripMenuItem("&File");
-            fileMenu.DropDownItems.AddRange(new ToolStripItem[]
-            {
-                CreateMenuItem("&New Project", Keys.Control | Keys.N, async (s, e) => await NewProjectAsync()),
-                CreateMenuItem("&Open Project...", Keys.Control | Keys.O, async (s, e) => await OpenProjectAsync()),
-                CreateMenuItem("&Save Project", Keys.Control | Keys.S, async (s, e) => await SaveProjectAsync()),
-                CreateMenuItem("Save Project &As...", Keys.Control | Keys.Shift | Keys.S, async (s, e) => await SaveProjectAsAsync()),
-                new ToolStripSeparator(),
-                CreateMenuItem("&Import AVA XML...", null, async (s, e) => await ImportAvaXmlAsync()),
-                CreateMenuItem("&Export AVA XML...", null, async (s, e) => await ExportAvaXmlAsync()),
-                CreateMenuItem("Export &GAEB XML...", null, async (s, e) => await ExportGaebXmlAsync()),
-                new ToolStripSeparator(),
-                CreateMenuItem("Recent Files", null, null),
-                new ToolStripSeparator(),
-                CreateMenuItem("E&xit", Keys.Alt | Keys.F4, (s, e) => Application.Exit())
-            });
+            fileMenu.DropDownItems.Add("&New Project", null, (s, e) => NewProject());
+            fileMenu.DropDownItems.Add("&Open Project...", null, (s, e) => OpenProject());
+            fileMenu.DropDownItems.Add("&Save Project", null, (s, e) => SaveProject());
+            fileMenu.DropDownItems.Add("Save Project &As...", null, (s, e) => SaveProjectAs());
+            fileMenu.DropDownItems.Add(new ToolStripSeparator());
+            fileMenu.DropDownItems.Add("&Import AVA XML...", null, (s, e) => ImportAvaXml());
+            fileMenu.DropDownItems.Add("&Export AVA XML...", null, (s, e) => ExportAvaXml());
+            fileMenu.DropDownItems.Add("Export &GAEB XML...", null, (s, e) => ExportGaebXml());
+            fileMenu.DropDownItems.Add(new ToolStripSeparator());
+            fileMenu.DropDownItems.Add("E&xit", null, (s, e) => this.Close());
             menuStrip.Items.Add(fileMenu);
-
-            // Edit menu
-            var editMenu = new ToolStripMenuItem("&Edit");
-            editMenu.DropDownItems.AddRange(new ToolStripItem[]
-            {
-                CreateMenuItem("&Add Element", Keys.Insert, (s, e) => AddElement()),
-                CreateMenuItem("&Edit Element", null, (s, e) => EditElement()),
-                CreateMenuItem("&Delete Element", Keys.Delete, (s, e) => DeleteElement()),
-                new ToolStripSeparator(),
-                CreateMenuItem("&Copy", Keys.Control | Keys.C, (s, e) => CopyElements()),
-                CreateMenuItem("&Paste", Keys.Control | Keys.V, (s, e) => PasteElements()),
-                new ToolStripSeparator(),
-                CreateMenuItem("Select &All", Keys.Control | Keys.A, (s, e) => SelectAll())
-            });
-            menuStrip.Items.Add(editMenu);
 
             // Template menu
             var templateMenu = new ToolStripMenuItem("&Template");
-            templateMenu.DropDownItems.AddRange(new ToolStripItem[]
-            {
-                CreateMenuItem("Create &Data Entry Template...", null, async (s, e) => await CreateDataEntryTemplateAsync()),
-                CreateMenuItem("Create &IFC Mapping Template...", null, async (s, e) => await CreateIFCMappingTemplateAsync()),
-                CreateMenuItem("&Convert Template to Main...", null, async (s, e) => await ConvertTemplateToMainAsync())
-            });
+            templateMenu.DropDownItems.Add("Create &Data Entry Template...", null, (s, e) => CreateDataEntryTemplate());
+            templateMenu.DropDownItems.Add("Create &IFC Mapping Template...", null, (s, e) => CreateIFCMappingTemplate());
+            templateMenu.DropDownItems.Add("&Convert Template to Main...", null, (s, e) => ConvertTemplateToMain());
             menuStrip.Items.Add(templateMenu);
 
             // Tools menu
             var toolsMenu = new ToolStripMenuItem("&Tools");
-            toolsMenu.DropDownItems.AddRange(new ToolStripItem[]
-            {
-                CreateMenuItem("&Validate Data", Keys.F5, async (s, e) => await ValidateDataAsync()),
-                CreateMenuItem("&Quick Diagnostics", Keys.F6, (s, e) => ShowQuickDiagnostics()),
-                CreateMenuItem("&Batch Operations...", null, (s, e) => ShowBatchOperations()),
-                new ToolStripSeparator(),
-                CreateMenuItem("&Options...", null, (s, e) => ShowOptions())
-            });
+            toolsMenu.DropDownItems.Add("&Validate Data", null, (s, e) => ValidateData());
+            toolsMenu.DropDownItems.Add("&Quick Diagnostics", null, (s, e) => ShowQuickDiagnostics());
+            toolsMenu.DropDownItems.Add("&Column Mapping Reference", null, (s, e) => ShowColumnMappingReference());
+            toolsMenu.DropDownItems.Add("View &Log Messages", null, (s, e) => ShowLogMessages());
             menuStrip.Items.Add(toolsMenu);
 
             // Help menu
             var helpMenu = new ToolStripMenuItem("&Help");
-            helpMenu.DropDownItems.AddRange(new ToolStripItem[]
-            {
-                CreateMenuItem("&Documentation", Keys.F1, (s, e) => ShowDocumentation()),
-                CreateMenuItem("&Column Reference", null, (s, e) => ShowColumnMappingReference()),
-                new ToolStripSeparator(),
-                CreateMenuItem("&About", null, (s, e) => ShowAbout())
-            });
+            helpMenu.DropDownItems.Add("&About", null, (s, e) => ShowAbout());
             menuStrip.Items.Add(helpMenu);
 
             this.MainMenuStrip = menuStrip;
+            this.Controls.Add(menuStrip);
         }
 
         /// <summary>
-        /// Helper to create menu items
-        /// </summary>
-        private ToolStripMenuItem CreateMenuItem(string text, Keys? shortcut, EventHandler handler)
-        {
-            var item = new ToolStripMenuItem(text);
-            if (shortcut.HasValue)
-                item.ShortcutKeys = shortcut.Value;
-            if (handler != null)
-                item.Click += handler;
-            return item;
-        }
-
-        /// <summary>
-        /// Create toolbar with common actions
+        /// Create toolbar
         /// </summary>
         private void CreateToolStrip()
         {
             toolStrip = new ToolStrip();
-            toolStrip.Items.AddRange(new ToolStripItem[]
-            {
-                CreateToolButton("New", "New Project", async (s, e) => await NewProjectAsync()),
-                CreateToolButton("Open", "Open Project", async (s, e) => await OpenProjectAsync()),
-                CreateToolButton("Save", "Save Project", async (s, e) => await SaveProjectAsync()),
-                new ToolStripSeparator(),
-                CreateToolButton("Add", "Add Element", (s, e) => AddElement()),
-                CreateToolButton("Edit", "Edit Element", (s, e) => EditElement()),
-                CreateToolButton("Delete", "Delete Element", (s, e) => DeleteElement()),
-                new ToolStripSeparator(),
-                CreateToolButton("Import", "Import XML", async (s, e) => await ImportAvaXmlAsync()),
-                CreateToolButton("Export", "Export XML", async (s, e) => await ExportAvaXmlAsync()),
-                new ToolStripSeparator(),
-                CreateToolButton("Validate", "Validate Data", async (s, e) => await ValidateDataAsync())
-            });
-        }
+            toolStrip.Items.Add("New", null, (s, e) => NewProject());
+            toolStrip.Items.Add("Open", null, (s, e) => OpenProject());
+            toolStrip.Items.Add("Save", null, (s, e) => SaveProject());
+            toolStrip.Items.Add(new ToolStripSeparator());
+            toolStrip.Items.Add("Add Element", null, (s, e) => AddElement());
+            toolStrip.Items.Add("Edit Element", null, (s, e) => EditElement());
+            toolStrip.Items.Add("Delete Element", null, (s, e) => DeleteElement());
+            toolStrip.Items.Add(new ToolStripSeparator());
+            toolStrip.Items.Add("Import AVA", null, (s, e) => ImportAvaXml());
+            toolStrip.Items.Add("Export AVA", null, (s, e) => ExportAvaXml());
+            toolStrip.Items.Add(new ToolStripSeparator());
+            toolStrip.Items.Add("Validate", null, (s, e) => ValidateData());
 
-        private ToolStripButton CreateToolButton(string text, string tooltip, EventHandler handler)
-        {
-            var button = new ToolStripButton(text);
-            button.ToolTipText = tooltip;
-            button.Click += handler;
-            return button;
+            this.Controls.Add(toolStrip);
         }
 
         /// <summary>
-        /// Create main content area with improved DataGridView
+        /// Create main content area
         /// </summary>
         private void CreateMainContent()
         {
-            // Initialize BindingSource for better data management
-            bindingSource = new BindingSource();
+            var mainPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(5)
+            };
 
-            // Create DataGridView with optimized settings
+            // Search panel
+            var searchPanel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 30
+            };
+
+            var searchLabel = new Label
+            {
+                Text = "Search:",
+                Location = new Point(0, 6),
+                Size = new Size(50, 20)
+            };
+            searchPanel.Controls.Add(searchLabel);
+
+            searchBox = new TextBox
+            {
+                Location = new Point(55, 3),
+                Size = new Size(200, 20)
+            };
+            searchBox.TextChanged += SearchBox_TextChanged;
+            searchPanel.Controls.Add(searchBox);
+
+            mainPanel.Controls.Add(searchPanel);
+
+            // DataGridView
             dataGridView = new DataGridView
             {
                 Dock = DockStyle.Fill,
                 AutoGenerateColumns = false,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-                MultiSelect = true,
+                MultiSelect = false,
                 AllowUserToAddRows = false,
-                AllowUserToDeleteRows = false,
                 ReadOnly = true,
                 AllowUserToResizeColumns = true,
-                AllowUserToOrderColumns = true,
-                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
-                RowHeadersVisible = false,
-                BackgroundColor = SystemColors.Window,
-                BorderStyle = BorderStyle.None,
-                CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
-                GridColor = SystemColors.ControlLight,
-                DataSource = bindingSource,
-                VirtualMode = true // Enable virtual mode for performance
+                AllowUserToOrderColumns = true
             };
 
             SetupDataGridViewColumns();
-            SetupDataGridViewEvents();
+            dataGridView.DoubleClick += (s, e) => EditElement();
+            mainPanel.Controls.Add(dataGridView);
+
+            this.Controls.Add(mainPanel);
         }
 
         /// <summary>
-        /// Setup DataGridView columns with better configuration
-        /// </summary>
-        private void SetupDataGridViewColumns()
-        {
-            dataGridView.Columns.Clear();
-
-            DataGridViewColumn[] columns = new DataGridViewColumn[]
-            {
-                new DataGridViewTextBoxColumn { Name = "Id", HeaderText = "ID", Width = 50, Frozen = true },
-                new DataGridViewTextBoxColumn { Name = "Id2", HeaderText = "Code", Width = 150, Frozen = true },
-                new DataGridViewTextBoxColumn { Name = "Name", HeaderText = "Name", Width = 250, Frozen = true },
-                new DataGridViewTextBoxColumn { Name = "Type", HeaderText = "Type", Width = 80 },
-                new DataGridViewTextBoxColumn { Name = "Text", HeaderText = "Text", Width = 200 },
-                new DataGridViewTextBoxColumn { Name = "LongText", HeaderText = "Description", Width = 300 },
-                new DataGridViewTextBoxColumn { Name = "Qty", HeaderText = "Quantity", Width = 80, DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N2" } },
-                new DataGridViewTextBoxColumn { Name = "Qu", HeaderText = "Unit", Width = 60 },
-                new DataGridViewTextBoxColumn { Name = "Up", HeaderText = "Unit Price", Width = 100, DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "C2" } },
-                new DataGridViewTextBoxColumn { Name = "Sum", HeaderText = "Total", Width = 100, DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "C2", Font = new Font("Segoe UI", 9F, FontStyle.Bold) } },
-                new DataGridViewTextBoxColumn { Name = "BimKey", HeaderText = "BIM Key", Width = 100 },
-                new DataGridViewTextBoxColumn { Name = "Properties", HeaderText = "Properties", Width = 200 },
-                new DataGridViewTextBoxColumn { Name = "Note", HeaderText = "Notes", Width = 150 },
-                new DataGridViewCheckBoxColumn { Name = "Marked", HeaderText = "Marked", Width = 60 }
-            };
-
-            dataGridView.Columns.AddRange(columns);
-
-            // Configure column headers
-            foreach (DataGridViewColumn col in dataGridView.Columns)
-            {
-                col.HeaderCell.Style.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-                col.HeaderCell.Style.BackColor = SystemColors.Control;
-            }
-        }
-
-        /// <summary>
-        /// Setup DataGridView events
-        /// </summary>
-        private void SetupDataGridViewEvents()
-        {
-            dataGridView.CellDoubleClick += (s, e) =>
-            {
-                if (e.RowIndex >= 0)
-                    EditElement();
-            };
-
-            dataGridView.CellFormatting += DataGridView_CellFormatting;
-            dataGridView.SelectionChanged += DataGridView_SelectionChanged;
-            dataGridView.KeyDown += DataGridView_KeyDown;
-        }
-
-        /// <summary>
-        /// Create status strip with progress bar
+        /// Create status strip
         /// </summary>
         private void CreateStatusStrip()
         {
@@ -370,68 +196,141 @@ namespace NovaAvaCostManagement
                 Spring = true,
                 TextAlign = ContentAlignment.MiddleLeft
             };
+            statusStrip.Items.Add(statusLabel);
 
             progressBar = new ToolStripProgressBar
             {
-                Visible = false,
-                Style = ProgressBarStyle.Marquee
+                Visible = false
             };
+            statusStrip.Items.Add(progressBar);
 
-            var elementCountLabel = new ToolStripStatusLabel();
-            var totalValueLabel = new ToolStripStatusLabel();
-
-            statusStrip.Items.AddRange(new ToolStripItem[]
-            {
-                statusLabel,
-                progressBar,
-                new ToolStripSeparator(),
-                elementCountLabel,
-                totalValueLabel
-            });
+            this.Controls.Add(statusStrip);
         }
 
         /// <summary>
-        /// Refresh DataGridView with virtual mode
+        /// Setup DataGridView columns
+        /// </summary>
+        private void SetupDataGridViewColumns()
+        {
+            dataGridView.Columns.Clear();
+
+            // Enable scrolling
+            dataGridView.ScrollBars = ScrollBars.Both;
+            dataGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+
+            // Core columns that should always be visible
+            dataGridView.Columns.Add("Version", "Ver");
+            dataGridView.Columns.Add("Id", "ID");
+            dataGridView.Columns.Add("Id2", "Code");
+            dataGridView.Columns.Add("Name", "Name");
+            dataGridView.Columns.Add("Type", "Type");
+            dataGridView.Columns.Add("Text", "Text");
+            dataGridView.Columns.Add("LongText", "Long Text");
+            dataGridView.Columns.Add("Qty", "Qty");
+            dataGridView.Columns.Add("Qu", "Unit");
+            dataGridView.Columns.Add("Up", "Unit Price");
+            dataGridView.Columns.Add("Sum", "Total");
+            dataGridView.Columns.Add("Properties", "Properties");
+            dataGridView.Columns.Add("BimKey", "BIM Key");
+            dataGridView.Columns.Add("Note", "Note");
+            dataGridView.Columns.Add("Color", "Color");
+
+            // Set column widths
+            dataGridView.Columns["Version"].Width = 40;
+            dataGridView.Columns["Id"].Width = 50;
+            dataGridView.Columns["Id2"].Width = 120;
+            dataGridView.Columns["Name"].Width = 200;
+            dataGridView.Columns["Type"].Width = 80;
+            dataGridView.Columns["Text"].Width = 150;
+            dataGridView.Columns["LongText"].Width = 200;
+            dataGridView.Columns["Qty"].Width = 80;
+            dataGridView.Columns["Qu"].Width = 60;
+            dataGridView.Columns["Up"].Width = 80;
+            dataGridView.Columns["Sum"].Width = 80;
+            dataGridView.Columns["Properties"].Width = 150;
+            dataGridView.Columns["BimKey"].Width = 100;
+            dataGridView.Columns["Note"].Width = 150;
+            dataGridView.Columns["Color"].Width = 80;
+
+            // Freeze important columns
+            dataGridView.Columns["Version"].Frozen = true;
+            dataGridView.Columns["Id"].Frozen = true;
+            dataGridView.Columns["Id2"].Frozen = true;
+            dataGridView.Columns["Name"].Frozen = true;
+        }
+
+        /// <summary>
+        /// Refresh DataGridView with current data
         /// </summary>
         private void RefreshDataGrid()
         {
-            try
+            dataGridView.Rows.Clear();
+
+            var filteredElements = GetFilteredElements();
+
+            // Debug
+            MessageBox.Show($"RefreshDataGrid: {filteredElements.Count} elements to display");
+
+            foreach (var element in filteredElements)
             {
-                var filteredElements = GetFilteredElements();
-                bindingSource.DataSource = filteredElements;
-                dataGridView.Refresh();
-                UpdateStatusBar();
+                var rowIndex = dataGridView.Rows.Add();
+                var row = dataGridView.Rows[rowIndex];
+
+                row.Cells["Version"].Value = element.Version;
+                row.Cells["Id"].Value = element.Id;
+                row.Cells["Id2"].Value = element.Id2;
+                row.Cells["Name"].Value = element.Name;
+                row.Cells["Type"].Value = element.Type;
+                row.Cells["Text"].Value = element.Text;
+                row.Cells["LongText"].Value = element.LongText;
+                row.Cells["Qty"].Value = element.Qty.ToString("F2");
+                row.Cells["Qu"].Value = element.Qu;
+                row.Cells["Up"].Value = element.Up.ToString("F2");
+                row.Cells["Sum"].Value = element.Sum.ToString("F2");
+                row.Cells["Properties"].Value = element.Properties;
+                row.Cells["BimKey"].Value = element.BimKey;
+                row.Cells["Note"].Value = element.Note;
+                row.Cells["Color"].Value = element.Color;
+
+                // Apply color coding
+                if (!string.IsNullOrEmpty(element.Color))
+                {
+                    try
+                    {
+                        var color = ColorTranslator.FromHtml(element.Color);
+                        row.DefaultCellStyle.BackColor = Color.FromArgb(50, color);
+                    }
+                    catch
+                    {
+                        // Ignore invalid color formats
+                    }
+                }
+
+                row.Tag = element; // Store reference to the element
             }
-            catch (Exception ex)
-            {
-                ShowError("Failed to refresh data grid", ex);
-            }
+
+            UpdateStatusBar();
         }
 
         /// <summary>
-        /// Get filtered elements with improved search
+        /// Get filtered elements based on search
         /// </summary>
         private List<CostElement> GetFilteredElements()
         {
             if (string.IsNullOrWhiteSpace(searchBox?.Text))
-                return projectManager.Elements.ToList();
+                return projectManager.Elements;
 
-            var searchTerms = searchBox.Text.ToLower().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-
+            var searchTerm = searchBox.Text.ToLower();
             return projectManager.Elements.Where(e =>
-                searchTerms.All(term =>
-                    e.Name?.ToLower().Contains(term) == true ||
-                    e.Text?.ToLower().Contains(term) == true ||
-                    e.LongText?.ToLower().Contains(term) == true ||
-                    e.Id2?.ToLower().Contains(term) == true ||
-                    e.Type?.ToLower().Contains(term) == true ||
-                    e.BimKey?.ToLower().Contains(term) == true
-                )
+                e.Name.ToLower().Contains(searchTerm) ||
+                e.Text.ToLower().Contains(searchTerm) ||
+                e.Id2.ToLower().Contains(searchTerm) ||
+                e.Type.ToLower().Contains(searchTerm)
             ).ToList();
         }
 
         /// <summary>
-        /// Update status bar with statistics
+        /// Update status bar
         /// </summary>
         private void UpdateStatusBar()
         {
@@ -439,29 +338,23 @@ namespace NovaAvaCostManagement
             var filteredCount = GetFilteredElements().Count;
             var totalValue = projectManager.Elements.Sum(e => e.Sum);
 
-            statusLabel.Text = $"Elements: {filteredCount}/{totalElements} | Total Value: {totalValue:C2}";
+            statusLabel.Text = $"Elements: {filteredCount}/{totalElements} | Total Value: {totalValue:F2}";
         }
 
-        // Async operations
-        private async Task NewProjectAsync()
+        // Menu and toolbar event handlers
+        private void NewProject()
         {
-            if (!await ConfirmUnsavedChangesAsync()) return;
-
-            await RunAsync(async () =>
+            if (ConfirmUnsavedChanges())
             {
-                await Task.Run(() =>
-                {
-                    projectManager.CreateNewProject();
-                });
+                projectManager.CreateNewProject();
                 RefreshDataGrid();
-                isDirty = false;
                 SetStatus("New project created");
-            });
+            }
         }
 
-        private async Task OpenProjectAsync()
+        private void OpenProject()
         {
-            if (!await ConfirmUnsavedChangesAsync()) return;
+            if (!ConfirmUnsavedChanges()) return;
 
             using (var dialog = new OpenFileDialog())
             {
@@ -470,35 +363,43 @@ namespace NovaAvaCostManagement
 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
-                    await RunAsync(async () =>
+                    try
                     {
-                        await Task.Run(() => projectManager.LoadProject(dialog.FileName));
+                        projectManager.LoadProject(dialog.FileName);
                         RefreshDataGrid();
-                        isDirty = false;
                         SetStatus($"Project loaded: {Path.GetFileName(dialog.FileName)}");
-                    });
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error loading project: {ex.Message}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
         }
 
-        private async Task SaveProjectAsync()
+        private void SaveProject()
         {
             if (string.IsNullOrEmpty(projectManager.ProjectFilePath))
             {
-                await SaveProjectAsAsync();
+                SaveProjectAs();
             }
             else
             {
-                await RunAsync(async () =>
+                try
                 {
-                    await Task.Run(() => projectManager.SaveProject(projectManager.ProjectFilePath));
-                    isDirty = false;
+                    projectManager.SaveProject(projectManager.ProjectFilePath);
                     SetStatus("Project saved");
-                });
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error saving project: {ex.Message}", "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
 
-        private async Task SaveProjectAsAsync()
+        private void SaveProjectAs()
         {
             using (var dialog = new SaveFileDialog())
             {
@@ -508,17 +409,21 @@ namespace NovaAvaCostManagement
 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
-                    await RunAsync(async () =>
+                    try
                     {
-                        await Task.Run(() => projectManager.SaveProject(dialog.FileName));
-                        isDirty = false;
+                        projectManager.SaveProject(dialog.FileName);
                         SetStatus($"Project saved: {Path.GetFileName(dialog.FileName)}");
-                    });
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error saving project: {ex.Message}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
         }
 
-        private async Task ImportAvaXmlAsync()
+        private void ImportAvaXml()
         {
             using (var dialog = new OpenFileDialog())
             {
@@ -527,29 +432,47 @@ namespace NovaAvaCostManagement
 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
-                    await RunAsync(async () =>
+                    try
                     {
                         SetStatus("Importing AVA XML...");
-                        await Task.Run(() => projectManager.ImportAvaXml(dialog.FileName));
+                        ShowProgress(true);
+
+                        // Add debugging
+                        MessageBox.Show($"Before import: {projectManager.Elements.Count} elements");
+
+                        projectManager.ImportAvaXml(dialog.FileName);
+
+                        // Add more debugging
+                        MessageBox.Show($"After import: {projectManager.Elements.Count} elements");
+
                         RefreshDataGrid();
-                        isDirty = true;
                         SetStatus($"AVA XML imported: {Path.GetFileName(dialog.FileName)}");
-                    });
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error importing AVA XML: {ex.Message}\n\nStack trace: {ex.StackTrace}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        SetStatus("Import failed");
+                    }
+                    finally
+                    {
+                        ShowProgress(false);
+                    }
                 }
             }
         }
 
-        private async Task ExportAvaXmlAsync()
+        private void ExportAvaXml()
         {
-            await ExportXmlAsync(false);
+            ExportXml(false);
         }
 
-        private async Task ExportGaebXmlAsync()
+        private void ExportGaebXml()
         {
-            await ExportXmlAsync(true);
+            ExportXml(true);
         }
 
-        private async Task ExportXmlAsync(bool useGaebFormat)
+        private void ExportXml(bool useGaebFormat)
         {
             using (var dialog = new SaveFileDialog())
             {
@@ -559,34 +482,32 @@ namespace NovaAvaCostManagement
 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
-                    await RunAsync(async () =>
+                    try
                     {
                         SetStatus("Exporting XML...");
-                        await Task.Run(() => projectManager.ExportAvaXml(dialog.FileName, useGaebFormat));
+                        ShowProgress(true);
+
+                        projectManager.ExportAvaXml(dialog.FileName, useGaebFormat);
                         SetStatus($"XML exported: {Path.GetFileName(dialog.FileName)}");
 
-                        if (MessageBox.Show("Export completed. Open file?", "Success",
-                            MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
-                        {
-                            System.Diagnostics.Process.Start(dialog.FileName);
-                        }
-                    });
+                        // Show export preview
+                        ShowExportPreview(dialog.FileName);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error exporting XML: {ex.Message}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        SetStatus("Export failed");
+                    }
+                    finally
+                    {
+                        ShowProgress(false);
+                    }
                 }
             }
         }
 
-        private async Task ValidateDataAsync()
-        {
-            await RunAsync(async () =>
-            {
-                SetStatus("Validating data...");
-                var result = await Task.Run(() => projectManager.ValidateForExport());
-                ShowValidationResults(result);
-                SetStatus("Validation completed");
-            });
-        }
-
-        private async Task CreateDataEntryTemplateAsync()
+        private void CreateDataEntryTemplate()
         {
             using (var dialog = new SaveFileDialog())
             {
@@ -596,16 +517,37 @@ namespace NovaAvaCostManagement
 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
-                    await RunAsync(async () =>
+                    try
                     {
-                        await Task.Run(() => TemplateManager.CreateDataEntryTemplate(dialog.FileName));
+                        TemplateManager.CreateDataEntryTemplate(dialog.FileName);
                         SetStatus($"Template created: {Path.GetFileName(dialog.FileName)}");
-                    });
+
+                        var result = MessageBox.Show("Template created successfully. Would you like to open it?",
+                            "Template Created", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+
+                        if (result == DialogResult.Yes)
+                        {
+                            try
+                            {
+                                System.Diagnostics.Process.Start(dialog.FileName);
+                            }
+                            catch
+                            {
+                                MessageBox.Show($"Could not open file: {dialog.FileName}", "Error",
+                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error creating template: {ex.Message}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
         }
 
-        private async Task CreateIFCMappingTemplateAsync()
+        private void CreateIFCMappingTemplate()
         {
             using (var dialog = new SaveFileDialog())
             {
@@ -615,16 +557,37 @@ namespace NovaAvaCostManagement
 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
-                    await RunAsync(async () =>
+                    try
                     {
-                        await Task.Run(() => TemplateManager.CreateIFCMappingTemplate(dialog.FileName));
-                        SetStatus($"IFC template created: {Path.GetFileName(dialog.FileName)}");
-                    });
+                        TemplateManager.CreateIFCMappingTemplate(dialog.FileName);
+                        SetStatus($"IFC mapping template created: {Path.GetFileName(dialog.FileName)}");
+
+                        var result = MessageBox.Show("IFC mapping template created successfully. Would you like to open it?",
+                            "Template Created", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+
+                        if (result == DialogResult.Yes)
+                        {
+                            try
+                            {
+                                System.Diagnostics.Process.Start(dialog.FileName);
+                            }
+                            catch
+                            {
+                                MessageBox.Show($"Could not open file: {dialog.FileName}", "Error",
+                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error creating IFC mapping template: {ex.Message}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
         }
 
-        private async Task ConvertTemplateToMainAsync()
+        private void ConvertTemplateToMain()
         {
             using (var dialog = new OpenFileDialog())
             {
@@ -633,332 +596,103 @@ namespace NovaAvaCostManagement
 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
-                    await RunAsync(async () =>
+                    try
                     {
                         SetStatus("Converting template...");
-                        var convertedElements = await Task.Run(() =>
-                            TemplateManager.ConvertTemplateToMainSheet(dialog.FileName));
+                        ShowProgress(true);
+
+                        var convertedElements = TemplateManager.ConvertTemplateToMainSheet(dialog.FileName);
 
                         if (convertedElements.Count > 0)
                         {
-                            foreach (var element in convertedElements)
+                            var result = MessageBox.Show(
+                                $"Converted {convertedElements.Count} elements from template.\n\nChoose action:\nYes = Append to existing\nNo = Replace existing\nCancel = Cancel",
+                                "Template Conversion",
+                                MessageBoxButtons.YesNoCancel,
+                                MessageBoxIcon.Question);
+
+                            if (result == DialogResult.Yes) // Append
                             {
-                                projectManager.Elements.Add(element);
+                                projectManager.Elements.AddRange(convertedElements);
+                                RefreshDataGrid();
+                                SetStatus($"Template converted and appended: {convertedElements.Count} elements");
                             }
-                            RefreshDataGrid();
-                            isDirty = true;
-                            SetStatus($"Template converted: {convertedElements.Count} elements");
+                            else if (result == DialogResult.No) // Replace
+                            {
+                                projectManager.Elements.Clear();
+                                projectManager.Elements.AddRange(convertedElements);
+                                RefreshDataGrid();
+                                SetStatus($"Template converted and replaced: {convertedElements.Count} elements");
+                            }
                         }
                         else
                         {
-                            SetStatus("No valid elements found in template");
+                            MessageBox.Show("No valid elements found in template.", "Template Conversion",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
-                    });
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error converting template: {ex.Message}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        SetStatus("Template conversion failed");
+                    }
+                    finally
+                    {
+                        ShowProgress(false);
+                    }
                 }
             }
         }
 
-        // Helper methods
-        private async Task RunAsync(Func<Task> action)
+        private void ValidateData()
         {
             try
             {
+                SetStatus("Validating data...");
                 ShowProgress(true);
-                await action();
+
+                var result = projectManager.ValidateForExport();
+                ShowValidationResults(result);
             }
             catch (Exception ex)
             {
-                ShowError("Operation failed", ex);
+                MessageBox.Show($"Error during validation: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
                 ShowProgress(false);
-            }
-        }
-
-        private void ShowProgress(bool show)
-        {
-            progressBar.Visible = show;
-            Cursor = show ? Cursors.WaitCursor : Cursors.Default;
-            Application.DoEvents();
-        }
-
-        private void SetStatus(string message)
-        {
-            statusLabel.Text = message;
-            projectManager.AddLogMessage(message);
-        }
-
-        private void ShowError(string message, Exception ex)
-        {
-            MessageBox.Show($"{message}\n\n{ex.Message}", "Error",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
-            SetStatus($"Error: {ex.Message}");
-        }
-
-        private async Task<bool> ConfirmUnsavedChangesAsync()
-        {
-            if (!isDirty) return true;
-
-            var result = MessageBox.Show(
-                "You have unsaved changes. Do you want to save them?",
-                "Unsaved Changes",
-                MessageBoxButtons.YesNoCancel,
-                MessageBoxIcon.Warning);
-
-            switch (result)
-            {
-                case DialogResult.Yes:
-                    await SaveProjectAsync();
-                    return true;
-                case DialogResult.No:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        // Event handlers
-        private void SearchBox_TextChanged(object sender, EventArgs e)
-        {
-            searchDebounceTimer.Stop();
-            searchDebounceTimer.Start();
-        }
-
-        private void SearchDebounceTimer_Tick(object sender, EventArgs e)
-        {
-            searchDebounceTimer.Stop();
-            RefreshDataGrid();
-        }
-
-        private void DataGridView_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
-        {
-            if (e.RowIndex < 0) return;
-
-            var element = GetElementAtRow(e.RowIndex);
-            if (element == null) return;
-
-            // Apply color coding
-            if (!string.IsNullOrEmpty(element.Color))
-            {
-                try
-                {
-                    var color = ColorTranslator.FromHtml(element.Color);
-                    e.CellStyle.BackColor = Color.FromArgb(30, color);
-                }
-                catch { }
-            }
-
-            // Highlight invalid rows
-            if (!element.IsValid)
-            {
-                e.CellStyle.ForeColor = Color.Red;
-            }
-        }
-
-        private void DataGridView_SelectionChanged(object sender, EventArgs e)
-        {
-            UpdateStatusBar();
-        }
-
-        private void DataGridView_KeyDown(object sender, KeyEventArgs e)
-        {
-            switch (e.KeyCode)
-            {
-                case Keys.Enter:
-                    EditElement();
-                    e.Handled = true;
-                    break;
-                case Keys.Delete:
-                    DeleteElement();
-                    e.Handled = true;
-                    break;
-                case Keys.Insert:
-                    AddElement();
-                    e.Handled = true;
-                    break;
-            }
-        }
-
-        private void MainForm_Load(object sender, EventArgs e)
-        {
-            // Load recent files
-            // Load settings
-            // Check for updates
-        }
-
-        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            // Use .GetAwaiter().GetResult() to synchronously wait for the async method
-            if (!ConfirmUnsavedChangesAsync().GetAwaiter().GetResult())
-            {
-                e.Cancel = true;
-                return;
-            }
-
-            // Cleanup resources
-            searchDebounceTimer?.Dispose();
-            bindingSource?.Dispose();
-            dataGridView?.Dispose();
-        }
-
-        private void ProjectManager_PropertyChanged(object sender, PropertyChangedEventArgs e)
-        {
-            if (e.PropertyName == "Elements")
-            {
-                isDirty = true;
-                RefreshDataGrid();
-            }
-        }
-
-        // Element operations
-        private void AddElement()
-        {
-            using (var form = new ElementEditForm())
-            {
-                if (form.ShowDialog() == DialogResult.OK)
-                {
-                    projectManager.Elements.Add(form.CostElement);
-                    RefreshDataGrid();
-                    isDirty = true;
-                    SetStatus("Element added");
-                }
-            }
-        }
-
-        private void EditElement()
-        {
-            var selectedElement = GetSelectedElement();
-            if (selectedElement == null)
-            {
-                MessageBox.Show("Please select an element to edit.", "No Selection",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            using (var form = new ElementEditForm(selectedElement))
-            {
-                if (form.ShowDialog() == DialogResult.OK)
-                {
-                    var index = projectManager.Elements.IndexOf(selectedElement);
-                    projectManager.Elements[index] = form.CostElement;
-                    RefreshDataGrid();
-                    isDirty = true;
-                    SetStatus("Element updated");
-                }
-            }
-        }
-
-        private void DeleteElement()
-        {
-            var selectedElements = GetSelectedElements();
-            if (selectedElements.Count == 0)
-            {
-                MessageBox.Show("Please select elements to delete.", "No Selection",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            var message = selectedElements.Count == 1
-                ? "Delete the selected element?"
-                : $"Delete {selectedElements.Count} selected elements?";
-
-            if (MessageBox.Show(message, "Confirm Delete",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-            {
-                foreach (var element in selectedElements)
-                {
-                    projectManager.Elements.Remove(element);
-                }
-                RefreshDataGrid();
-                isDirty = true;
-                SetStatus($"{selectedElements.Count} element(s) deleted");
-            }
-        }
-
-        private void CopyElements()
-        {
-            var selectedElements = GetSelectedElements();
-            if (selectedElements.Count > 0)
-            {
-                // Implement clipboard operations
-                SetStatus($"{selectedElements.Count} element(s) copied");
-            }
-        }
-
-        private void PasteElements()
-        {
-            // Implement clipboard operations
-        }
-
-        private void SelectAll()
-        {
-            dataGridView.SelectAll();
-        }
-
-        private CostElement GetSelectedElement()
-        {
-            if (dataGridView.SelectedRows.Count > 0)
-            {
-                return GetElementAtRow(dataGridView.SelectedRows[0].Index);
-            }
-            return null;
-        }
-
-        private List<CostElement> GetSelectedElements()
-        {
-            var elements = new List<CostElement>();
-            foreach (DataGridViewRow row in dataGridView.SelectedRows)
-            {
-                var element = GetElementAtRow(row.Index);
-                if (element != null)
-                    elements.Add(element);
-            }
-            return elements;
-        }
-
-        private CostElement GetElementAtRow(int rowIndex)
-        {
-            if (rowIndex >= 0 && rowIndex < bindingSource.Count)
-            {
-                return bindingSource[rowIndex] as CostElement;
-            }
-            return null;
-        }
-
-        // Additional dialogs
-        private void ShowValidationResults(ValidationResult result)
-        {
-            using (var form = new ValidationResultForm(result))
-            {
-                form.ShowDialog();
+                SetStatus("Validation completed");
             }
         }
 
         private void ShowQuickDiagnostics()
         {
             var diagnostics = projectManager.GenerateQuickDiagnostics();
-            using (var form = new TextViewerForm("Quick Diagnostics", diagnostics))
+
+            using (var form = new Form())
             {
+                form.Text = "Quick Diagnostics";
+                form.Size = new Size(600, 500);  // Smaller initial size
+                form.StartPosition = FormStartPosition.CenterParent;
+                form.FormBorderStyle = FormBorderStyle.Sizable;  // Make resizable
+                form.MinimumSize = new Size(400, 300);  // Set minimum size
+
+                var textBox = new TextBox
+                {
+                    Dock = DockStyle.Fill,
+                    Multiline = true,
+                    ReadOnly = true,
+                    ScrollBars = ScrollBars.Both,  // Both horizontal and vertical
+                    Font = new Font("Consolas", 9),
+                    Text = diagnostics,
+                    WordWrap = false  // Allow horizontal scrolling
+                };
+
+                form.Controls.Add(textBox);
                 form.ShowDialog();
             }
-        }
-
-        private void ShowBatchOperations()
-        {
-            MessageBox.Show("Batch operations feature coming soon.", "Batch Operations",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-
-        private void ShowOptions()
-        {
-            MessageBox.Show("Options dialog coming soon.", "Options",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-
-        private void ShowDocumentation()
-        {
-            System.Diagnostics.Process.Start("https://docs.nova-ava.com");
         }
 
         private void ShowColumnMappingReference()
@@ -967,62 +701,212 @@ namespace NovaAvaCostManagement
 
 Core Fields (Always Required):
 - version (2): Fixed version number
-- id: Sequential or GUID identifier  
+- id: Sequential or GUID identifier
 - name: Element name/description
 - text: Short description (max 255 chars)
 - longtext: Detailed description (max 2000 chars)
+- qty: Quantity value
+- qu: Unit of measurement
+- up: Unit price
+- sum: Total value (qty * up)
+- properties: PHP-serialized properties string
 
-[Additional mapping information...]";
+Auto-Generated Fields:
+- id2, id5, id6, ident: GUID identifiers
+- created, created3: Timestamps
+- criteria: Default criteria string
 
-            using (var form = new TextViewerForm("Column Mapping Reference", mappingInfo))
+IFC-Specific Fields:
+- ifc_type: IFC element type (IFCPIPESEGMENT, IFCWALL, etc.)
+- material: Material specification
+- dimension: Dimensional information
+- segment_type: Type/category specification
+
+Optional Fields:
+- bimkey: BIM reference key
+- color: Color coding (hex format)
+- note: Additional notes
+- type: Element type/category
+- label: Display label
+
+All 69+ fields are supported for full NOVA AVA compatibility.
+See CostElement class for complete field listing.";
+
+            using (var form = new Form())
             {
+                form.Text = "Column Mapping Reference";
+                form.Size = new Size(600, 500);
+                form.StartPosition = FormStartPosition.CenterParent;
+
+                var textBox = new TextBox
+                {
+                    Dock = DockStyle.Fill,
+                    Multiline = true,
+                    ReadOnly = true,
+                    ScrollBars = ScrollBars.Vertical,
+                    Font = new Font("Consolas", 9),
+                    Text = mappingInfo
+                };
+
+                form.Controls.Add(textBox);
+                form.ShowDialog();
+            }
+        }
+
+        private void ShowLogMessages()
+        {
+            using (var form = new Form())
+            {
+                form.Text = "Log Messages";
+                form.Size = new Size(700, 400);
+                form.StartPosition = FormStartPosition.CenterParent;
+
+                var textBox = new TextBox
+                {
+                    Dock = DockStyle.Fill,
+                    Multiline = true,
+                    ReadOnly = true,
+                    ScrollBars = ScrollBars.Vertical,
+                    Font = new Font("Consolas", 9),
+                    Text = string.Join(Environment.NewLine, projectManager.LogMessages)
+                };
+
+                form.Controls.Add(textBox);
                 form.ShowDialog();
             }
         }
 
         private void ShowAbout()
         {
-            var aboutText = @"NOVA AVA Cost Management System
-Version 2.0
-
-Enhanced Features:
-- Async operations for better performance
-- Improved error handling and validation
-- Thread-safe operations
-- Better resource management
-- Enhanced search capabilities
-- Virtual mode for large datasets
-
-© 2025 - Built with C# WinForms";
-
-            MessageBox.Show(aboutText, "About", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(
+                "NOVA AVA Cost Management System\n\n" +
+                "Version 1.0\n" +
+                "Complete cost element management with AVA/NOVA XML compatibility\n\n" +
+                "Features:\n" +
+                "- Full 69+ column support\n" +
+                "- PHP-serialized properties generation\n" +
+                "- Template-based workflows\n" +
+                "- Import/Export AVA and GAEB XML\n" +
+                "- Data validation and diagnostics\n\n" +
+                "Built with C# WinForms",
+                "About NOVA AVA Cost Management",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
-    }
 
-    /// <summary>
-    /// Simple text viewer form for displaying information
-    /// </summary>
-    public class TextViewerForm : Form
-    {
-        private TextBox textBox;
-
-        public TextViewerForm(string title, string content)
+        // Element management
+        private void AddElement()
         {
-            this.Text = title;
-            this.Size = new Size(600, 400);
-            this.StartPosition = FormStartPosition.CenterParent;
-
-            textBox = new TextBox
+            using (var form = new ElementEditForm())
             {
-                Dock = DockStyle.Fill,
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Both,
-                Font = new Font("Consolas", 9F),
-                Text = content
-            };
+                if (form.ShowDialog() == DialogResult.OK)
+                {
+                    projectManager.Elements.Add(form.CostElement);
+                    RefreshDataGrid();
+                    SetStatus("Element added");
+                }
+            }
+        }
 
-            this.Controls.Add(textBox);
+        private void EditElement()
+        {
+            if (dataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select an element to edit.", "No Selection",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedElement = (CostElement)dataGridView.SelectedRows[0].Tag;
+            using (var form = new ElementEditForm(selectedElement))
+            {
+                if (form.ShowDialog() == DialogResult.OK)
+                {
+                    var index = projectManager.Elements.IndexOf(selectedElement);
+                    projectManager.Elements[index] = form.CostElement;
+                    RefreshDataGrid();
+                    SetStatus("Element updated");
+                }
+            }
+        }
+
+        private void DeleteElement()
+        {
+            if (dataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select an element to delete.", "No Selection",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var result = MessageBox.Show("Are you sure you want to delete the selected element?",
+                "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                var selectedElement = (CostElement)dataGridView.SelectedRows[0].Tag;
+                projectManager.Elements.Remove(selectedElement);
+                RefreshDataGrid();
+                SetStatus("Element deleted");
+            }
+        }
+
+        // Helper methods
+        private bool ConfirmUnsavedChanges()
+        {
+            // For now, just return true. In a full implementation, 
+            // you'd track dirty state and prompt user
+            return true;
+        }
+
+        private void SetStatus(string message)
+        {
+            statusLabel.Text = message;
+            projectManager.AddLogMessage(message);
+        }
+
+        private void ShowProgress(bool show)
+        {
+            progressBar.Visible = show;
+        }
+
+        private void ShowValidationResults(ValidationResult result)
+        {
+            using (var form = new ValidationResultForm(result))
+            {
+                form.ShowDialog();
+            }
+        }
+
+        private void ShowExportPreview(string filePath)
+        {
+            var result = MessageBox.Show(
+                $"Export completed successfully!\n\nFile: {Path.GetFileName(filePath)}\nElements: {projectManager.Elements.Count}\n\nWould you like to open the exported file?",
+                "Export Complete",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information);
+
+            if (result == DialogResult.Yes)
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(filePath);
+                }
+                catch
+                {
+                    MessageBox.Show($"Could not open file: {filePath}", "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+        }
+        private void SearchBox_TextChanged(object sender, EventArgs e)
+        {
+            RefreshDataGrid();
+        }
+
+        private void MainForm_Load(object sender, EventArgs e)
+        {
+
         }
     }
 }
