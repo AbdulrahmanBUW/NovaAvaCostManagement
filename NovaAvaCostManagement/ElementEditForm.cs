@@ -13,13 +13,15 @@ namespace NovaAvaCostManagement
     {
         public CostElement CostElement { get; private set; }
 
-        private TextBox txtId2, txtName, txtType, txtText, txtLongText;
+        private TextBox txtId, txtId2, txtName, txtType, txtText, txtLongText;
         private TextBox txtQty, txtQu, txtUp, txtBimKey, txtDescription;
         private TextBox txtLabel, txtNote, txtColor;
         private ComboBox cmbIfcType, cmbMaterial, cmbDimension, cmbSegmentType;
         private Label lblTotal, lblProperties;
-        private Button btnOK, btnCancel, btnGenerateProperties;
+        private Button btnOK, btnCancel, btnGenerateProperties, btnGenerateGuid;
+
         private Panel scrollPanel;
+        private Panel buttonPanel;
 
         public ElementEditForm() : this(null) { }
 
@@ -48,65 +50,117 @@ namespace NovaAvaCostManagement
 
         private void InitializeCustomComponents()
         {
-            this.Size = new Size(620, 600);
+            this.Size = new Size(650, 750);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.Sizable;
-            this.MaximizeBox = true;
-            this.MinimizeBox = true;
-            this.MinimumSize = new Size(620, 400);
+            this.MaximizeBox = false;
+            this.MinimizeBox = false;
+            this.MinimumSize = new Size(650, 550);
 
+            // Main container panel
+            var mainContainer = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(10)
+            };
+
+            // Scrollable content panel
             scrollPanel = new Panel
             {
                 Location = new Point(0, 0),
-                Size = new Size(600, 520),
+                Size = new Size(610, 580),
                 AutoScroll = true,
-                Dock = DockStyle.Top
+                BorderStyle = BorderStyle.FixedSingle
             };
-            this.Controls.Add(scrollPanel);
+            mainContainer.Controls.Add(scrollPanel);
 
             int yPos = 20;
             const int labelWidth = 120;
-            const int textBoxWidth = 350;
+            const int textBoxWidth = 300;
             const int spacing = 35;
 
-            AddLabelAndTextBox("Code (ID2)*:", ref txtId2, ref yPos, labelWidth, textBoxWidth, spacing);
-            AddLabelAndTextBox("Name*:", ref txtName, ref yPos, labelWidth, textBoxWidth, spacing);
+            // ID field (user-editable)
+            var lblId = new Label
+            {
+                Text = "ID:",
+                Location = new Point(20, yPos),
+                Size = new Size(labelWidth, 20)
+            };
+            scrollPanel.Controls.Add(lblId);
+
+            txtId = new TextBox
+            {
+                Location = new Point(150, yPos),
+                Size = new Size(textBoxWidth, 20),
+                Text = CostElement.Id
+            };
+            scrollPanel.Controls.Add(txtId);
+            yPos += spacing;
+
+            // Code (ID2) field with GUID generation button
+            var lblId2 = new Label
+            {
+                Text = "Code (ID2):",
+                Location = new Point(20, yPos),
+                Size = new Size(labelWidth, 20)
+            };
+            scrollPanel.Controls.Add(lblId2);
+
+            txtId2 = new TextBox
+            {
+                Location = new Point(150, yPos),
+                Size = new Size(textBoxWidth, 20)
+            };
+            scrollPanel.Controls.Add(txtId2);
+
+            // GUID generation button
+            btnGenerateGuid = new Button
+            {
+                Text = "Generate GUID",
+                Location = new Point(460, yPos),
+                Size = new Size(100, 23),
+                BackColor = Color.LightBlue
+            };
+            btnGenerateGuid.Click += BtnGenerateGuid_Click;
+            scrollPanel.Controls.Add(btnGenerateGuid);
+
+            yPos += spacing;
+
+            AddLabelAndTextBox("Name:", ref txtName, ref yPos, labelWidth, textBoxWidth, spacing);
             AddLabelAndTextBox("Type:", ref txtType, ref yPos, labelWidth, textBoxWidth, spacing);
             AddLabelAndTextBox("Label:", ref txtLabel, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // Text (required)
+            // Text field
             var lblText = new Label
             {
-                Text = "Text*:",
+                Text = "Text:",
                 Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20),
-                ForeColor = Color.Red
+                Size = new Size(labelWidth, 20)
             };
             scrollPanel.Controls.Add(lblText);
 
             txtText = new TextBox
             {
                 Location = new Point(150, yPos),
-                Size = new Size(textBoxWidth, 20),
+                Size = new Size(textBoxWidth + 110, 20),
                 MaxLength = 255
             };
             scrollPanel.Controls.Add(txtText);
             yPos += spacing;
 
-            // Long Text (required)
+            // Long Text field
             var lblLongText = new Label
             {
-                Text = "Long Text*:",
+                Text = "Long Text:",
                 Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20),
-                ForeColor = Color.Red
+                Size = new Size(labelWidth, 20)
             };
             scrollPanel.Controls.Add(lblLongText);
 
             txtLongText = new TextBox
             {
                 Location = new Point(150, yPos),
-                Size = new Size(textBoxWidth, 60),
+                Size = new Size(textBoxWidth + 110, 60),
                 Multiline = true,
                 MaxLength = 2000,
                 ScrollBars = ScrollBars.Vertical
@@ -134,7 +188,7 @@ namespace NovaAvaCostManagement
             lblTotal = new Label
             {
                 Location = new Point(150, yPos),
-                Size = new Size(textBoxWidth, 20),
+                Size = new Size(textBoxWidth + 110, 20),
                 BorderStyle = BorderStyle.FixedSingle,
                 BackColor = SystemColors.Control,
                 Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold)
@@ -185,7 +239,7 @@ namespace NovaAvaCostManagement
             lblProperties = new Label
             {
                 Location = new Point(150, yPos),
-                Size = new Size(textBoxWidth, 40),
+                Size = new Size(textBoxWidth + 110, 40),
                 BorderStyle = BorderStyle.FixedSingle,
                 BackColor = SystemColors.Control,
                 Font = new Font("Consolas", 8F),
@@ -196,61 +250,82 @@ namespace NovaAvaCostManagement
 
             btnGenerateProperties = new Button
             {
-                Text = "Generate",
-                Location = new Point(510, yPos),
-                Size = new Size(80, 23)
+                Text = "Generate Properties",
+                Location = new Point(460, yPos),
+                Size = new Size(120, 23)
             };
             btnGenerateProperties.Click += BtnGenerateProperties_Click;
             scrollPanel.Controls.Add(btnGenerateProperties);
             yPos += 50;
 
+            // Set the scroll panel height based on content
+            scrollPanel.Height = Math.Min(yPos + 20, 580);
             scrollPanel.AutoScrollMinSize = new Size(0, yPos + 20);
 
-            // Buttons at bottom
-            var buttonPanel = new Panel
+            // Button panel at the bottom
+            buttonPanel = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 60
+                Height = 60,
+                BackColor = SystemColors.Control
             };
 
+            // OK button
             btnOK = new Button
             {
                 Text = "OK",
-                Location = new Point(425, 15),
                 Size = new Size(75, 30),
-                Anchor = AnchorStyles.Right,
+                Location = new Point(mainContainer.Width - 165, 15),
+                Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
                 DialogResult = DialogResult.OK
             };
             btnOK.Click += BtnOK_Click;
             buttonPanel.Controls.Add(btnOK);
 
+            // Cancel button
             btnCancel = new Button
             {
                 Text = "Cancel",
-                Location = new Point(510, 15),
                 Size = new Size(75, 30),
-                Anchor = AnchorStyles.Right,
+                Location = new Point(mainContainer.Width - 80, 15),
+                Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
                 DialogResult = DialogResult.Cancel
             };
+            btnCancel.Click += (s, e) => { this.DialogResult = DialogResult.Cancel; this.Close(); };
             buttonPanel.Controls.Add(btnCancel);
 
-            var lblNote = new Label
-            {
-                Text = "* Required fields",
-                Location = new Point(20, 20),
-                Size = new Size(100, 20),
-                ForeColor = Color.Red,
-                Font = new Font("Microsoft Sans Serif", 8.25F, FontStyle.Italic)
-            };
-            buttonPanel.Controls.Add(lblNote);
-
-            this.Controls.Add(buttonPanel);
+            mainContainer.Controls.Add(buttonPanel);
+            this.Controls.Add(mainContainer);
 
             this.AcceptButton = btnOK;
             this.CancelButton = btnCancel;
 
             UpdateTotal(null, null);
             UpdatePropertiesDisplay();
+        }
+
+        /// <summary>
+        /// Generate GUID and put it in the ID2 field
+        /// </summary>
+        private void BtnGenerateGuid_Click(object sender, EventArgs e)
+        {
+            string newGuid = Guid.NewGuid().ToString();
+            txtId2.Text = newGuid;
+
+            // Visual feedback
+            btnGenerateGuid.BackColor = Color.LightGreen;
+            var timer = new System.Windows.Forms.Timer { Interval = 500 };
+            timer.Tick += (s, args) =>
+            {
+                btnGenerateGuid.BackColor = Color.LightBlue;
+                timer.Stop();
+                timer.Dispose();
+            };
+            timer.Start();
+
+            // Optional: Show message
+            MessageBox.Show($"GUID generated: {newGuid}", "GUID Generated",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void AddLabelAndTextBox(string labelText, ref TextBox textBox, ref int yPos,
@@ -267,7 +342,7 @@ namespace NovaAvaCostManagement
             textBox = new TextBox
             {
                 Location = new Point(150, yPos),
-                Size = new Size(textBoxWidth, 20)
+                Size = new Size(textBoxWidth + 110, 20)
             };
             scrollPanel.Controls.Add(textBox);
 
@@ -288,7 +363,7 @@ namespace NovaAvaCostManagement
             comboBox = new ComboBox
             {
                 Location = new Point(150, yPos),
-                Size = new Size(textBoxWidth, 20),
+                Size = new Size(textBoxWidth + 110, 20),
                 DropDownStyle = ComboBoxStyle.DropDown
             };
             scrollPanel.Controls.Add(comboBox);
@@ -298,6 +373,7 @@ namespace NovaAvaCostManagement
 
         private void LoadElementData()
         {
+            txtId.Text = CostElement.Id;
             txtId2.Text = CostElement.Id2;
             txtName.Text = CostElement.Name;
             txtType.Text = CostElement.Type;
@@ -387,7 +463,7 @@ namespace NovaAvaCostManagement
                 return;
             }
 
-            // Warn about missing fields
+            // Warn about missing fields (but don't block generation)
             var missingFields = new List<string>();
             if (string.IsNullOrWhiteSpace(cmbMaterial.Text))
                 missingFields.Add("Material");
@@ -419,7 +495,7 @@ namespace NovaAvaCostManagement
                     cmbDimension.Text,
                     cmbSegmentType.Text);
 
-                // Update CostElement
+                // Update CostElement immediately
                 CostElement.IfcType = cmbIfcType.Text;
                 CostElement.Material = cmbMaterial.Text;
                 CostElement.Dimension = cmbDimension.Text;
@@ -466,9 +542,12 @@ namespace NovaAvaCostManagement
 
         private void BtnOK_Click(object sender, EventArgs e)
         {
+            // Validate input first
             if (!ValidateInput())
                 return;
 
+            // Update all fields from form controls
+            CostElement.Id = txtId.Text.Trim();
             CostElement.Id2 = txtId2.Text.Trim();
             CostElement.Name = txtName.Text.Trim();
             CostElement.Type = txtType.Text.Trim();
@@ -488,16 +567,15 @@ namespace NovaAvaCostManagement
 
             if (decimal.TryParse(txtQty.Text, out decimal quantity))
                 CostElement.Qty = quantity;
+            else
+                CostElement.Qty = 0;
 
             if (decimal.TryParse(txtUp.Text, out decimal unitPrice))
                 CostElement.Up = unitPrice;
+            else
+                CostElement.Up = 0;
 
-            // Only generate properties if they haven't been generated yet
-            if (string.IsNullOrEmpty(CostElement.Properties) && !string.IsNullOrEmpty(CostElement.IfcType))
-            {
-                CostElement.GenerateProperties();
-            }
-
+            // Always calculate fields to ensure Sum is correct
             CostElement.CalculateFields();
 
             this.DialogResult = DialogResult.OK;
@@ -506,54 +584,16 @@ namespace NovaAvaCostManagement
 
         private bool ValidateInput()
         {
-            if (string.IsNullOrWhiteSpace(txtId2.Text))
+            // Validate ID field
+            if (string.IsNullOrWhiteSpace(txtId.Text))
             {
-                MessageBox.Show("Code (ID2) is required.", "Validation Error",
+                MessageBox.Show("Please enter an ID for the element.", "Validation Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                txtId2.Focus();
+                txtId.Focus();
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(txtName.Text))
-            {
-                MessageBox.Show("Name is required.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                txtName.Focus();
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(txtText.Text))
-            {
-                MessageBox.Show("Text field is required.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                txtText.Focus();
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(txtLongText.Text))
-            {
-                MessageBox.Show("Long Text field is required.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                txtLongText.Focus();
-                return false;
-            }
-
-            if (txtText.Text.Length > 255)
-            {
-                MessageBox.Show("Text must be 255 characters or less.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                txtText.Focus();
-                return false;
-            }
-
-            if (txtLongText.Text.Length > 2000)
-            {
-                MessageBox.Show("Long Text must be 2000 characters or less.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                txtLongText.Focus();
-                return false;
-            }
-
+            // Only keep basic format validation for numeric fields and color
             if (!string.IsNullOrWhiteSpace(txtQty.Text) &&
                 (!decimal.TryParse(txtQty.Text, out decimal quantity) || quantity < 0))
             {
@@ -678,6 +718,10 @@ namespace NovaAvaCostManagement
         }
 
         private void ElementEditForm_Load_1(object sender, EventArgs e)
+        {
+        }
+
+        private void ElementEditForm_Load_2(object sender, EventArgs e)
         {
         }
     }

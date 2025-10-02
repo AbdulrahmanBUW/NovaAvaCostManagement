@@ -99,10 +99,11 @@ namespace NovaAvaCostManagement
         public Dictionary<string, object> AdditionalData { get; set; } = new Dictionary<string, object>();
 
         /// <summary>
-        /// Constructor that initializes auto-generated fields
+        /// Constructor that initializes auto-generated fields WITHOUT properties
         /// </summary>
         public CostElement()
         {
+            // Auto-generate ID as default, but user can override
             Id = GenerateId();
             Id2 = Guid.NewGuid().ToString();
             Id5 = Guid.NewGuid().ToString();
@@ -110,7 +111,10 @@ namespace NovaAvaCostManagement
             Ident = Guid.NewGuid().ToString();
             Created = DateTime.Now;
             Created3 = DateTime.Now;
-            Criteria = GenerateDefaultCriteria();
+
+            // Properties and Criteria remain empty until explicitly set
+            Properties = "";
+            Criteria = "";
         }
 
         /// <summary>
@@ -123,15 +127,7 @@ namespace NovaAvaCostManagement
         }
 
         /// <summary>
-        /// Generate default criteria string matching VBA macro format
-        /// </summary>
-        private string GenerateDefaultCriteria()
-        {
-            return "a:2:{s:5:\"color\";s:7:\"#3498DB\";s:10:\"background\";s:7:\"#F1C40F\";}";
-        }
-
-        /// <summary>
-        /// Calculate computed fields
+        /// Calculate computed fields WITHOUT auto-generating properties
         /// </summary>
         public void CalculateFields()
         {
@@ -139,10 +135,13 @@ namespace NovaAvaCostManagement
             UpResult = Up;
             Sum = Qty * Up;
             ItGross = Sum + (Sum * Vat / 100) + (Sum * Tax / 100);
+
+            // REMOVED: Auto-properties generation
+            // Properties will only be generated when explicitly called via GenerateProperties()
         }
 
         /// <summary>
-        /// Generate PHP-serialized properties string
+        /// Generate PHP-serialized properties string - ONLY when explicitly called
         /// </summary>
         public void GenerateProperties()
         {
@@ -150,6 +149,7 @@ namespace NovaAvaCostManagement
             {
                 Properties = PropertiesSerializer.SerializeProperties(IfcType, Material, Dimension, SegmentType);
             }
+            // If no IFC type, leave Properties empty - no auto-generation
         }
 
         /// <summary>
