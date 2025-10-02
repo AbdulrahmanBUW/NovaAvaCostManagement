@@ -1,11 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace NovaAvaCostManagement
 {
     /// <summary>
-    /// Form for adding/editing cost elements
+    /// Form for adding/editing cost elements with scrolling support
     /// </summary>
     public partial class ElementEditForm : Form
     {
@@ -16,18 +18,14 @@ namespace NovaAvaCostManagement
         private TextBox txtLabel, txtNote, txtColor;
         private ComboBox cmbIfcType, cmbMaterial, cmbDimension, cmbSegmentType;
         private Label lblTotal, lblProperties;
-
-        private void ElementEditForm_Load_1(object sender, EventArgs e)
-        {
-
-        }
-
         private Button btnOK, btnCancel, btnGenerateProperties;
+        private Panel scrollPanel;
 
         public ElementEditForm() : this(null) { }
 
         public ElementEditForm(CostElement element)
         {
+            InitializeComponent();
 
             if (element == null)
             {
@@ -50,27 +48,30 @@ namespace NovaAvaCostManagement
 
         private void InitializeCustomComponents()
         {
-            this.Size = new Size(600, 700);
+            this.Size = new Size(620, 600);
             this.StartPosition = FormStartPosition.CenterParent;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
+            this.FormBorderStyle = FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
+            this.MinimizeBox = true;
+            this.MinimumSize = new Size(620, 400);
+
+            scrollPanel = new Panel
+            {
+                Location = new Point(0, 0),
+                Size = new Size(600, 520),
+                AutoScroll = true,
+                Dock = DockStyle.Top
+            };
+            this.Controls.Add(scrollPanel);
 
             int yPos = 20;
             const int labelWidth = 120;
             const int textBoxWidth = 350;
             const int spacing = 35;
 
-            // ID/Code
             AddLabelAndTextBox("Code (ID2)*:", ref txtId2, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Name
             AddLabelAndTextBox("Name*:", ref txtName, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Type
             AddLabelAndTextBox("Type:", ref txtType, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Label
             AddLabelAndTextBox("Label:", ref txtLabel, ref yPos, labelWidth, textBoxWidth, spacing);
 
             // Text (required)
@@ -81,7 +82,7 @@ namespace NovaAvaCostManagement
                 Size = new Size(labelWidth, 20),
                 ForeColor = Color.Red
             };
-            this.Controls.Add(lblText);
+            scrollPanel.Controls.Add(lblText);
 
             txtText = new TextBox
             {
@@ -89,7 +90,7 @@ namespace NovaAvaCostManagement
                 Size = new Size(textBoxWidth, 20),
                 MaxLength = 255
             };
-            this.Controls.Add(txtText);
+            scrollPanel.Controls.Add(txtText);
             yPos += spacing;
 
             // Long Text (required)
@@ -100,7 +101,7 @@ namespace NovaAvaCostManagement
                 Size = new Size(labelWidth, 20),
                 ForeColor = Color.Red
             };
-            this.Controls.Add(lblLongText);
+            scrollPanel.Controls.Add(lblLongText);
 
             txtLongText = new TextBox
             {
@@ -110,17 +111,14 @@ namespace NovaAvaCostManagement
                 MaxLength = 2000,
                 ScrollBars = ScrollBars.Vertical
             };
-            this.Controls.Add(txtLongText);
+            scrollPanel.Controls.Add(txtLongText);
             yPos += 70;
 
-            // Quantity
             AddLabelAndTextBox("Quantity:", ref txtQty, ref yPos, labelWidth, textBoxWidth, spacing);
             txtQty.TextChanged += UpdateTotal;
 
-            // Unit
             AddLabelAndTextBox("Unit:", ref txtQu, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // Unit Price
             AddLabelAndTextBox("Unit Price:", ref txtUp, ref yPos, labelWidth, textBoxWidth, spacing);
             txtUp.TextChanged += UpdateTotal;
 
@@ -131,7 +129,7 @@ namespace NovaAvaCostManagement
                 Location = new Point(20, yPos),
                 Size = new Size(labelWidth, 20)
             };
-            this.Controls.Add(lblTotalLabel);
+            scrollPanel.Controls.Add(lblTotalLabel);
 
             lblTotal = new Label
             {
@@ -141,23 +139,23 @@ namespace NovaAvaCostManagement
                 BackColor = SystemColors.Control,
                 Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold)
             };
-            this.Controls.Add(lblTotal);
+            scrollPanel.Controls.Add(lblTotal);
             yPos += spacing;
 
             // IFC Type
             AddLabelAndComboBox("IFC Type:", ref cmbIfcType, ref yPos, labelWidth, textBoxWidth, spacing);
             cmbIfcType.Items.AddRange(new[] { "IFCPIPESEGMENT", "IFCWALL", "IFCBEAM", "IFCSLAB", "IFCDOOR", "IFCWINDOW", "IFCCOLUMN" });
-            cmbIfcType.SelectedIndexChanged += (s, e) => UpdateProperties();
+            cmbIfcType.SelectedIndexChanged += (s, e) => UpdatePropertiesDisplay();
 
             // Material
             AddLabelAndComboBox("Material:", ref cmbMaterial, ref yPos, labelWidth, textBoxWidth, spacing);
             cmbMaterial.Items.AddRange(new[] { "P235HTC1", "Steel", "Concrete", "Wood", "Aluminum", "Plastic" });
-            cmbMaterial.TextChanged += (s, e) => UpdateProperties();
+            cmbMaterial.TextChanged += (s, e) => UpdatePropertiesDisplay();
 
             // Dimension
             AddLabelAndComboBox("Dimension:", ref cmbDimension, ref yPos, labelWidth, textBoxWidth, spacing);
             cmbDimension.Items.AddRange(new[] { "DN125", "DN100", "DN150", "200mm", "300mm", "IPE200", "IPE300" });
-            cmbDimension.TextChanged += (s, e) => UpdateProperties();
+            cmbDimension.TextChanged += (s, e) => UpdatePropertiesDisplay();
 
             // Segment Type
             AddLabelAndComboBox("Segment Type:", ref cmbSegmentType, ref yPos, labelWidth, textBoxWidth, spacing);
@@ -168,18 +166,11 @@ namespace NovaAvaCostManagement
                 "Structural",
                 "Interior"
             });
-            cmbSegmentType.TextChanged += (s, e) => UpdateProperties();
+            cmbSegmentType.TextChanged += (s, e) => UpdatePropertiesDisplay();
 
-            // BIM Key
             AddLabelAndTextBox("BIM Key:", ref txtBimKey, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Description
             AddLabelAndTextBox("Description:", ref txtDescription, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Note
             AddLabelAndTextBox("Note:", ref txtNote, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Color
             AddLabelAndTextBox("Color:", ref txtColor, ref yPos, labelWidth, textBoxWidth, spacing);
 
             // Properties (read-only display)
@@ -189,7 +180,7 @@ namespace NovaAvaCostManagement
                 Location = new Point(20, yPos),
                 Size = new Size(labelWidth, 20)
             };
-            this.Controls.Add(lblPropertiesLabel);
+            scrollPanel.Controls.Add(lblPropertiesLabel);
 
             lblProperties = new Label
             {
@@ -198,9 +189,10 @@ namespace NovaAvaCostManagement
                 BorderStyle = BorderStyle.FixedSingle,
                 BackColor = SystemColors.Control,
                 Font = new Font("Consolas", 8F),
-                Text = CostElement.Properties
+                ForeColor = Color.Gray,
+                Text = "(Click Generate to create properties)"
             };
-            this.Controls.Add(lblProperties);
+            scrollPanel.Controls.Add(lblProperties);
 
             btnGenerateProperties = new Button
             {
@@ -208,46 +200,57 @@ namespace NovaAvaCostManagement
                 Location = new Point(510, yPos),
                 Size = new Size(80, 23)
             };
-            btnGenerateProperties.Click += (s, e) => UpdateProperties();
-            this.Controls.Add(btnGenerateProperties);
+            btnGenerateProperties.Click += BtnGenerateProperties_Click;
+            scrollPanel.Controls.Add(btnGenerateProperties);
             yPos += 50;
 
-            // Buttons
+            scrollPanel.AutoScrollMinSize = new Size(0, yPos + 20);
+
+            // Buttons at bottom
+            var buttonPanel = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 60
+            };
+
             btnOK = new Button
             {
                 Text = "OK",
-                Location = new Point(395, yPos + 20),
+                Location = new Point(425, 15),
                 Size = new Size(75, 30),
+                Anchor = AnchorStyles.Right,
                 DialogResult = DialogResult.OK
             };
             btnOK.Click += BtnOK_Click;
-            this.Controls.Add(btnOK);
+            buttonPanel.Controls.Add(btnOK);
 
             btnCancel = new Button
             {
                 Text = "Cancel",
-                Location = new Point(480, yPos + 20),
+                Location = new Point(510, 15),
                 Size = new Size(75, 30),
+                Anchor = AnchorStyles.Right,
                 DialogResult = DialogResult.Cancel
             };
-            this.Controls.Add(btnCancel);
+            buttonPanel.Controls.Add(btnCancel);
 
-            // Required field note
             var lblNote = new Label
             {
                 Text = "* Required fields",
-                Location = new Point(20, yPos + 25),
+                Location = new Point(20, 20),
                 Size = new Size(100, 20),
                 ForeColor = Color.Red,
                 Font = new Font("Microsoft Sans Serif", 8.25F, FontStyle.Italic)
             };
-            this.Controls.Add(lblNote);
+            buttonPanel.Controls.Add(lblNote);
+
+            this.Controls.Add(buttonPanel);
 
             this.AcceptButton = btnOK;
             this.CancelButton = btnCancel;
 
             UpdateTotal(null, null);
-            UpdateProperties();
+            UpdatePropertiesDisplay();
         }
 
         private void AddLabelAndTextBox(string labelText, ref TextBox textBox, ref int yPos,
@@ -259,14 +262,14 @@ namespace NovaAvaCostManagement
                 Location = new Point(20, yPos),
                 Size = new Size(labelWidth, 20)
             };
-            this.Controls.Add(label);
+            scrollPanel.Controls.Add(label);
 
             textBox = new TextBox
             {
                 Location = new Point(150, yPos),
                 Size = new Size(textBoxWidth, 20)
             };
-            this.Controls.Add(textBox);
+            scrollPanel.Controls.Add(textBox);
 
             yPos += spacing;
         }
@@ -280,7 +283,7 @@ namespace NovaAvaCostManagement
                 Location = new Point(20, yPos),
                 Size = new Size(labelWidth, 20)
             };
-            this.Controls.Add(label);
+            scrollPanel.Controls.Add(label);
 
             comboBox = new ComboBox
             {
@@ -288,7 +291,7 @@ namespace NovaAvaCostManagement
                 Size = new Size(textBoxWidth, 20),
                 DropDownStyle = ComboBoxStyle.DropDown
             };
-            this.Controls.Add(comboBox);
+            scrollPanel.Controls.Add(comboBox);
 
             yPos += spacing;
         }
@@ -312,6 +315,15 @@ namespace NovaAvaCostManagement
             cmbMaterial.Text = CostElement.Material;
             cmbDimension.Text = CostElement.Dimension;
             cmbSegmentType.Text = CostElement.SegmentType;
+
+            // Display existing properties
+            if (!string.IsNullOrEmpty(CostElement.Properties))
+            {
+                lblProperties.Text = CostElement.Properties.Length > 100
+                    ? CostElement.Properties.Substring(0, 100) + "..."
+                    : CostElement.Properties;
+                lblProperties.ForeColor = Color.Black;
+            }
         }
 
         private void UpdateTotal(object sender, EventArgs e)
@@ -327,20 +339,128 @@ namespace NovaAvaCostManagement
             }
         }
 
-        private void UpdateProperties()
+        private void UpdatePropertiesDisplay()
         {
-            if (cmbIfcType != null && cmbMaterial != null && cmbDimension != null && cmbSegmentType != null)
+            // This just updates the display preview as you type
+            if (lblProperties == null || string.IsNullOrWhiteSpace(cmbIfcType?.Text))
             {
+                if (lblProperties != null)
+                {
+                    lblProperties.Text = "(Click Generate to create properties)";
+                    lblProperties.ForeColor = Color.Gray;
+                }
+                return;
+            }
+
+            // Show preview
+            try
+            {
+                var preview = PropertiesSerializer.SerializeProperties(
+                    cmbIfcType.Text,
+                    cmbMaterial.Text,
+                    cmbDimension.Text,
+                    cmbSegmentType.Text);
+
+                lblProperties.Text = preview.Length > 100
+                    ? preview.Substring(0, 100) + "... (Preview)"
+                    : preview + " (Preview)";
+                lblProperties.ForeColor = Color.DarkOrange;
+            }
+            catch
+            {
+                lblProperties.Text = "(Invalid IFC data)";
+                lblProperties.ForeColor = Color.Red;
+            }
+        }
+
+        private void BtnGenerateProperties_Click(object sender, EventArgs e)
+        {
+            // Validate IFC Type
+            if (string.IsNullOrWhiteSpace(cmbIfcType.Text))
+            {
+                MessageBox.Show(
+                    "Please select an IFC Type before generating properties.",
+                    "IFC Type Required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                cmbIfcType.Focus();
+                return;
+            }
+
+            // Warn about missing fields
+            var missingFields = new List<string>();
+            if (string.IsNullOrWhiteSpace(cmbMaterial.Text))
+                missingFields.Add("Material");
+            if (string.IsNullOrWhiteSpace(cmbDimension.Text))
+                missingFields.Add("Dimension");
+            if (string.IsNullOrWhiteSpace(cmbSegmentType.Text))
+                missingFields.Add("Segment Type");
+
+            if (missingFields.Any())
+            {
+                var result = MessageBox.Show(
+                    $"The following fields are empty:\n- {string.Join("\n- ", missingFields)}\n\n" +
+                    "Properties will be generated with empty values for these fields.\n\n" +
+                    "Do you want to continue?",
+                    "Missing Fields",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (result != DialogResult.Yes)
+                    return;
+            }
+
+            try
+            {
+                // Generate properties
                 var properties = PropertiesSerializer.SerializeProperties(
                     cmbIfcType.Text,
                     cmbMaterial.Text,
                     cmbDimension.Text,
                     cmbSegmentType.Text);
 
-                if (lblProperties != null)
+                // Update CostElement
+                CostElement.IfcType = cmbIfcType.Text;
+                CostElement.Material = cmbMaterial.Text;
+                CostElement.Dimension = cmbDimension.Text;
+                CostElement.SegmentType = cmbSegmentType.Text;
+                CostElement.Properties = properties;
+
+                // Update display
+                lblProperties.Text = properties.Length > 100
+                    ? properties.Substring(0, 100) + "..."
+                    : properties;
+                lblProperties.ForeColor = Color.Green;
+
+                // Visual feedback
+                btnGenerateProperties.BackColor = Color.LightGreen;
+                var timer = new System.Windows.Forms.Timer { Interval = 500 };
+                timer.Tick += (s, args) =>
                 {
-                    lblProperties.Text = properties.Length > 100 ? properties.Substring(0, 100) + "..." : properties;
-                }
+                    btnGenerateProperties.BackColor = SystemColors.Control;
+                    timer.Stop();
+                    timer.Dispose();
+                };
+                timer.Start();
+
+                MessageBox.Show(
+                    "Properties generated successfully!\n\n" +
+                    $"Generated: {properties.Length} characters\n\n" +
+                    "The properties have been saved to this element.",
+                    "Success",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                lblProperties.Text = $"Error: {ex.Message}";
+                lblProperties.ForeColor = Color.Red;
+
+                MessageBox.Show(
+                    $"Error generating properties:\n{ex.Message}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 
@@ -349,7 +469,6 @@ namespace NovaAvaCostManagement
             if (!ValidateInput())
                 return;
 
-            // Update cost element with form data
             CostElement.Id2 = txtId2.Text.Trim();
             CostElement.Name = txtName.Text.Trim();
             CostElement.Type = txtType.Text.Trim();
@@ -367,15 +486,18 @@ namespace NovaAvaCostManagement
             CostElement.Dimension = cmbDimension.Text.Trim();
             CostElement.SegmentType = cmbSegmentType.Text.Trim();
 
-            // Parse numeric values
             if (decimal.TryParse(txtQty.Text, out decimal quantity))
                 CostElement.Qty = quantity;
 
             if (decimal.TryParse(txtUp.Text, out decimal unitPrice))
                 CostElement.Up = unitPrice;
 
-            // Generate properties and calculate fields
-            CostElement.GenerateProperties();
+            // Only generate properties if they haven't been generated yet
+            if (string.IsNullOrEmpty(CostElement.Properties) && !string.IsNullOrEmpty(CostElement.IfcType))
+            {
+                CostElement.GenerateProperties();
+            }
+
             CostElement.CalculateFields();
 
             this.DialogResult = DialogResult.OK;
@@ -384,7 +506,6 @@ namespace NovaAvaCostManagement
 
         private bool ValidateInput()
         {
-            // Check required fields
             if (string.IsNullOrWhiteSpace(txtId2.Text))
             {
                 MessageBox.Show("Code (ID2) is required.", "Validation Error",
@@ -417,7 +538,6 @@ namespace NovaAvaCostManagement
                 return false;
             }
 
-            // Validate text lengths
             if (txtText.Text.Length > 255)
             {
                 MessageBox.Show("Text must be 255 characters or less.", "Validation Error",
@@ -434,7 +554,6 @@ namespace NovaAvaCostManagement
                 return false;
             }
 
-            // Validate numeric fields
             if (!string.IsNullOrWhiteSpace(txtQty.Text) &&
                 (!decimal.TryParse(txtQty.Text, out decimal quantity) || quantity < 0))
             {
@@ -453,7 +572,6 @@ namespace NovaAvaCostManagement
                 return false;
             }
 
-            // Validate color format if provided
             if (!string.IsNullOrWhiteSpace(txtColor.Text))
             {
                 try
@@ -549,16 +667,18 @@ namespace NovaAvaCostManagement
                 Material = source.Material,
                 Dimension = source.Dimension,
                 SegmentType = source.SegmentType,
-                AdditionalData = new System.Collections.Generic.Dictionary<string, object>(source.AdditionalData)
+                AdditionalData = new Dictionary<string, object>(source.AdditionalData)
             };
 
             return clone;
         }
 
-        // Empty event handler for designer compatibility
         private void ElementEditForm_Load(object sender, EventArgs e)
         {
-            // This method is required by the designer but not used
+        }
+
+        private void ElementEditForm_Load_1(object sender, EventArgs e)
+        {
         }
     }
 }

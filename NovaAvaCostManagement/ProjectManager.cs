@@ -15,7 +15,271 @@ namespace NovaAvaCostManagement
         public List<CostElement> Elements { get; set; } = new List<CostElement>();
         public string ProjectFilePath { get; set; }
         public List<string> LogMessages { get; set; } = new List<string>();
+        /// <summary>
+        /// Import from AVA XML with schema tracking
+        /// </summary>
+        public void ImportAvaXmlWithSchemaTracking(string filePath)
+        {
+            try
+            {
+                // Store the original file path
+                EnhancedValidator.OriginalXmlFilePath = filePath;
 
+                // Load and analyze the XML schema
+                CaptureXmlSchema(filePath);
+
+                // Perform the actual import using existing method
+                ImportAvaXml(filePath);
+
+                AddLogMessage($"Imported with schema tracking from {filePath}");
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error importing AVA XML with schema tracking: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Capture XML schema structure for later comparison
+        /// </summary>
+        private void CaptureXmlSchema(string filePath)
+        {
+            try
+            {
+                var doc = System.Xml.Linq.XDocument.Load(filePath);
+                var schema = new Dictionary<string, HashSet<string>>();
+
+                // Find all element nodes
+                var elements = doc.Descendants().Where(x =>
+                    x.Name.LocalName.ToLower().Contains("element") ||
+                    x.Name.LocalName.ToLower().Contains("item"));
+
+                foreach (var element in elements)
+                {
+                    // Get all child element names
+                    var fields = element.Elements()
+                        .Select(e => e.Name.LocalName.ToLower())
+                        .ToHashSet();
+
+                    // Store field names for each element
+                    string elementId = element.Element("id")?.Value ??
+                                     element.Element("id2")?.Value ??
+                                     Guid.NewGuid().ToString();
+
+                    schema[elementId] = fields;
+                }
+
+                EnhancedValidator.OriginalXmlSchema = schema;
+                AddLogMessage($"Captured schema with {schema.Count} elements");
+            }
+            catch (Exception ex)
+            {
+                AddLogMessage($"Warning: Could not capture XML schema: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Enhanced validation using the new validator
+        /// </summary>
+        public ValidationResult ValidateForExportEnhanced()
+        {
+            var result = EnhancedValidator.ValidateForExport(Elements,
+                compareWithOriginal: EnhancedValidator.OriginalXmlSchema.Any());
+
+            // Generate and log detailed report
+            var report = EnhancedValidator.GenerateValidationReport(result);
+            AddLogMessage("Enhanced validation completed");
+
+            return result;
+        }
+
+        /// <summary>
+        /// Pre-export validation check
+        /// </summary>
+        public bool CanExport(out string reason)
+        {
+            var result = ValidateForExportEnhanced();
+
+            if (result.HasErrors)
+            {
+                reason = $"Export blocked: {result.Errors.Count} critical error(s) must be fixed first.";
+                return false;
+            }
+
+            if (result.HasWarnings)
+            {
+                reason = $"Export ready with {result.Warnings.Count} warning(s). Review recommended.";
+                return true;
+            }
+
+            reason = "Export ready. All validations passed.";
+            return true;
+        }
+
+        /// <summary>
+        /// Export with automatic pre-validation
+        /// </summary>
+        public void ExportAvaXmlSafe(string filePath, bool useGaebFormat = false, bool forceExport = false)
+        {
+            // Always validate before export
+            var validationResult = ValidateForExportEnhanced();
+
+            if (validationResult.HasErrors && !forceExport)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot export: {validationResult.Errors.Count} critical error(s) found. " +
+                    "Fix errors or use force export option.");
+            }
+
+            try
+            {
+                ExportAvaXml(filePath, useGaebFormat);
+                AddLogMessage($"Successfully exported {Elements.Count} elements to {filePath}");
+
+                if (validationResult.HasWarnings)
+                {
+                    AddLogMessage($"Note: Export completed with {validationResult.Warnings.Count} warning(s)");
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error exporting AVA XML: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Compare current data with original imported data
+        /// </summary>
+        public ComparisonResult CompareWithOriginal()
+        {
+            var result = new ComparisonResult();
+
+            if (!EnhancedValidator.OriginalXmlSchema.Any())
+            {
+                result.Message = "No original XML data available for comparison";
+                return result;
+            }
+
+            // Compare element counts
+            result.OriginalElementCount = EnhancedValidator.OriginalXmlSchema.Count;
+            result.CurrentElementCount = Elements.Count;
+
+            // Compare fields
+            var originalFields = EnhancedValidator.OriginalXmlSchema
+                .SelectMany(kvp => kvp.Value)
+                .Distinct()
+                .ToHashSet();
+
+            var currentFields = new HashSet<string>();
+            foreach (var element in Elements)
+            {
+                var elementFields = GetElementFieldNames(element);
+                currentFields.UnionWith(elementFields);
+            }
+
+            result.MissingFields = originalFields.Except(currentFields).ToList();
+            result.NewFields = currentFields.Except(originalFields).ToList();
+
+            return result;
+        }
+
+        /// <summary>
+        /// Get field names from an element that have non-default values
+        /// </summary>
+        private HashSet<string> GetElementFieldNames(CostElement element)
+        {
+            var fields = new HashSet<string>();
+            var properties = typeof(CostElement).GetProperties();
+
+            foreach (var prop in properties)
+            {
+                var value = prop.GetValue(element);
+                if (value != null && !IsDefaultValueInternal(value))
+                {
+                    fields.Add(prop.Name.ToLower());
+                }
+            }
+
+            return fields;
+        }
+
+        private bool IsDefaultValueInternal(object value)
+        {
+            if (value is string s)
+                return string.IsNullOrWhiteSpace(s);
+            if (value is decimal d)
+                return d == 0;
+            if (value is int i)
+                return i == 0;
+            if (value is bool b)
+                return b == false;
+            return false;
+        }
+
+        // ADD THIS NEW CLASS AT THE END OF THE FILE, OUTSIDE THE ProjectManager CLASS
+
+        /// <summary>
+        /// Result of comparing current data with original
+        /// </summary>
+        public class ComparisonResult
+        {
+            public string Message { get; set; } = "";
+            public int OriginalElementCount { get; set; }
+            public int CurrentElementCount { get; set; }
+            public List<string> MissingFields { get; set; } = new List<string>();
+            public List<string> NewFields { get; set; } = new List<string>();
+
+            public bool HasDifferences => MissingFields.Any() || NewFields.Any() ||
+                OriginalElementCount != CurrentElementCount;
+
+            public string GetSummary()
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("═══════════════════════════════════════════════════════");
+                sb.AppendLine("     COMPARISON WITH ORIGINAL XML");
+                sb.AppendLine("═══════════════════════════════════════════════════════");
+                sb.AppendLine();
+
+                if (!string.IsNullOrEmpty(Message))
+                {
+                    sb.AppendLine(Message);
+                    return sb.ToString();
+                }
+
+                sb.AppendLine($"Original Elements: {OriginalElementCount}");
+                sb.AppendLine($"Current Elements:  {CurrentElementCount}");
+                sb.AppendLine();
+
+                if (MissingFields.Any())
+                {
+                    sb.AppendLine("Missing Fields (present in original, absent in current):");
+                    sb.AppendLine("───────────────────────────────────────────────────────");
+                    foreach (var field in MissingFields)
+                    {
+                        sb.AppendLine($"  • {field}");
+                    }
+                    sb.AppendLine();
+                }
+
+                if (NewFields.Any())
+                {
+                    sb.AppendLine("New Fields (absent in original, present in current):");
+                    sb.AppendLine("───────────────────────────────────────────────────────");
+                    foreach (var field in NewFields)
+                    {
+                        sb.AppendLine($"  • {field}");
+                    }
+                    sb.AppendLine();
+                }
+
+                if (!HasDifferences)
+                {
+                    sb.AppendLine("✓ No significant differences found");
+                }
+
+                return sb.ToString();
+            }
+        }
         /// <summary>
         /// Create new project with sample data
         /// </summary>

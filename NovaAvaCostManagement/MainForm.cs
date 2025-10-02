@@ -6,6 +6,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using static NovaAvaCostManagement.ProjectManager;
 
 namespace NovaAvaCostManagement
 {
@@ -25,7 +26,6 @@ namespace NovaAvaCostManagement
 
         public MainForm()
         {
-
             InitializeCustomComponents();
             projectManager = new ProjectManager();
             projectManager.CreateNewProject();
@@ -37,27 +37,19 @@ namespace NovaAvaCostManagement
         /// </summary>
         private void InitializeCustomComponents()
         {
-            this.Size = new Size(600, 650);  // Reduce height
+            this.Size = new Size(600, 650);
             this.StartPosition = FormStartPosition.CenterParent;
-            this.FormBorderStyle = FormBorderStyle.Sizable;  // Make resizable
-            this.MaximizeBox = true;  // Allow maximize
-            this.MinimizeBox = true;  // Allow minimize
-            this.MinimumSize = new Size(500, 400);  // Set minimum size
+            this.FormBorderStyle = FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
+            this.MinimizeBox = true;
+            this.MinimumSize = new Size(500, 400);
 
-            // Add scroll support
             this.AutoScroll = true;
             this.AutoScrollMinSize = new Size(580, 650);
 
-            // Create menu strip
             CreateMenuStrip();
-
-            // Create toolbar
             CreateToolStrip();
-
-            // Create main content area
             CreateMainContent();
-
-            // Create status strip
             CreateStatusStrip();
         }
 
@@ -95,6 +87,7 @@ namespace NovaAvaCostManagement
             toolsMenu.DropDownItems.Add("&Quick Diagnostics", null, (s, e) => ShowQuickDiagnostics());
             toolsMenu.DropDownItems.Add("&Column Mapping Reference", null, (s, e) => ShowColumnMappingReference());
             toolsMenu.DropDownItems.Add("View &Log Messages", null, (s, e) => ShowLogMessages());
+            toolsMenu.DropDownItems.Add("&Compare with Original XML", null, (s, e) => ShowComparisonWithOriginal());
             menuStrip.Items.Add(toolsMenu);
 
             // Help menu
@@ -213,50 +206,171 @@ namespace NovaAvaCostManagement
         private void SetupDataGridViewColumns()
         {
             dataGridView.Columns.Clear();
+            dataGridView.Rows.Clear();
 
-            // Enable scrolling
+            // Critical settings for header visibility
+            dataGridView.ColumnHeadersVisible = true;
+            dataGridView.RowHeadersVisible = true;
+            dataGridView.AutoGenerateColumns = false;
+            dataGridView.AllowUserToAddRows = false;
+            dataGridView.ReadOnly = true;
+            dataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dataGridView.MultiSelect = false;
+
+            // Scrolling
             dataGridView.ScrollBars = ScrollBars.Both;
             dataGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
 
-            // Core columns that should always be visible
-            dataGridView.Columns.Add("Version", "Ver");
-            dataGridView.Columns.Add("Id", "ID");
-            dataGridView.Columns.Add("Id2", "Code");
-            dataGridView.Columns.Add("Name", "Name");
-            dataGridView.Columns.Add("Type", "Type");
-            dataGridView.Columns.Add("Text", "Text");
-            dataGridView.Columns.Add("LongText", "Long Text");
-            dataGridView.Columns.Add("Qty", "Qty");
-            dataGridView.Columns.Add("Qu", "Unit");
-            dataGridView.Columns.Add("Up", "Unit Price");
-            dataGridView.Columns.Add("Sum", "Total");
-            dataGridView.Columns.Add("Properties", "Properties");
-            dataGridView.Columns.Add("BimKey", "BIM Key");
-            dataGridView.Columns.Add("Note", "Note");
-            dataGridView.Columns.Add("Color", "Color");
+            // Style the header
+            dataGridView.EnableHeadersVisualStyles = false;
+            dataGridView.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(45, 45, 48);
+            dataGridView.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
+            dataGridView.ColumnHeadersDefaultCellStyle.Font = new Font(dataGridView.Font, FontStyle.Bold);
+            dataGridView.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridView.ColumnHeadersHeight = 30;
+            dataGridView.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
 
-            // Set column widths
-            dataGridView.Columns["Version"].Width = 40;
-            dataGridView.Columns["Id"].Width = 50;
-            dataGridView.Columns["Id2"].Width = 120;
-            dataGridView.Columns["Name"].Width = 200;
-            dataGridView.Columns["Type"].Width = 80;
-            dataGridView.Columns["Text"].Width = 150;
-            dataGridView.Columns["LongText"].Width = 200;
-            dataGridView.Columns["Qty"].Width = 80;
-            dataGridView.Columns["Qu"].Width = 60;
-            dataGridView.Columns["Up"].Width = 80;
-            dataGridView.Columns["Sum"].Width = 80;
-            dataGridView.Columns["Properties"].Width = 150;
-            dataGridView.Columns["BimKey"].Width = 100;
-            dataGridView.Columns["Note"].Width = 150;
-            dataGridView.Columns["Color"].Width = 80;
+            // FIXED: Add all columns first, then freeze them at the end
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Version",
+                HeaderText = "Ver",
+                Width = 40,
+                ReadOnly = true
+            });
 
-            // Freeze important columns
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Id",
+                HeaderText = "ID",
+                Width = 50,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Id2",
+                HeaderText = "Code",
+                Width = 120,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Name",
+                HeaderText = "Name",
+                Width = 200,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Type",
+                HeaderText = "Type",
+                Width = 80,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Text",
+                HeaderText = "Text",
+                Width = 150,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "LongText",
+                HeaderText = "Long Text",
+                Width = 200,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Qty",
+                HeaderText = "Qty",
+                Width = 80,
+                ReadOnly = true,
+                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight }
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Qu",
+                HeaderText = "Unit",
+                Width = 60,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Up",
+                HeaderText = "Unit Price",
+                Width = 80,
+                ReadOnly = true,
+                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight }
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Sum",
+                HeaderText = "Total",
+                Width = 80,
+                ReadOnly = true,
+                DefaultCellStyle = new DataGridViewCellStyle
+                {
+                    Alignment = DataGridViewContentAlignment.MiddleRight,
+                    Font = new Font(dataGridView.Font, FontStyle.Bold)
+                }
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Properties",
+                HeaderText = "Properties",
+                Width = 150,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "BimKey",
+                HeaderText = "BIM Key",
+                Width = 100,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Note",
+                HeaderText = "Note",
+                Width = 150,
+                ReadOnly = true
+            });
+
+            dataGridView.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "Color",
+                HeaderText = "Color",
+                Width = 80,
+                ReadOnly = true
+            });
+
+            // CRITICAL: Freeze columns AFTER all columns are added
+            // Freeze columns from left to right only
             dataGridView.Columns["Version"].Frozen = true;
             dataGridView.Columns["Id"].Frozen = true;
             dataGridView.Columns["Id2"].Frozen = true;
             dataGridView.Columns["Name"].Frozen = true;
+
+            // Style the grid
+            dataGridView.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+            dataGridView.RowsDefaultCellStyle.BackColor = Color.White;
+            dataGridView.GridColor = Color.FromArgb(200, 200, 200);
+            dataGridView.DefaultCellStyle.SelectionBackColor = Color.FromArgb(51, 153, 255);
+            dataGridView.DefaultCellStyle.SelectionForeColor = Color.White;
         }
 
         /// <summary>
@@ -267,9 +381,6 @@ namespace NovaAvaCostManagement
             dataGridView.Rows.Clear();
 
             var filteredElements = GetFilteredElements();
-
-            // Debug
-            MessageBox.Show($"RefreshDataGrid: {filteredElements.Count} elements to display");
 
             foreach (var element in filteredElements)
             {
@@ -292,7 +403,6 @@ namespace NovaAvaCostManagement
                 row.Cells["Note"].Value = element.Note;
                 row.Cells["Color"].Value = element.Color;
 
-                // Apply color coding
                 if (!string.IsNullOrEmpty(element.Color))
                 {
                     try
@@ -306,7 +416,7 @@ namespace NovaAvaCostManagement
                     }
                 }
 
-                row.Tag = element; // Store reference to the element
+                row.Tag = element;
             }
 
             UpdateStatusBar();
@@ -434,24 +544,29 @@ namespace NovaAvaCostManagement
                 {
                     try
                     {
-                        SetStatus("Importing AVA XML...");
+                        SetStatus("Importing AVA XML with schema tracking...");
                         ShowProgress(true);
 
-                        // Add debugging
-                        MessageBox.Show($"Before import: {projectManager.Elements.Count} elements");
-
-                        projectManager.ImportAvaXml(dialog.FileName);
-
-                        // Add more debugging
-                        MessageBox.Show($"After import: {projectManager.Elements.Count} elements");
+                        projectManager.ImportAvaXmlWithSchemaTracking(dialog.FileName);
 
                         RefreshDataGrid();
                         SetStatus($"AVA XML imported: {Path.GetFileName(dialog.FileName)}");
+
+                        MessageBox.Show(
+                            $"Import successful!\n\n" +
+                            $"Elements imported: {projectManager.Elements.Count}\n" +
+                            $"Original schema captured for validation comparison",
+                            "Import Complete",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Error importing AVA XML: {ex.Message}\n\nStack trace: {ex.StackTrace}", "Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(
+                            $"Error importing AVA XML:\n{ex.Message}",
+                            "Import Error",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
                         SetStatus("Import failed");
                     }
                     finally
@@ -464,44 +579,207 @@ namespace NovaAvaCostManagement
 
         private void ExportAvaXml()
         {
-            ExportXml(false);
+            ExportXmlWithValidation(false);
         }
 
         private void ExportGaebXml()
         {
-            ExportXml(true);
+            ExportXmlWithValidation(true);
         }
 
-        private void ExportXml(bool useGaebFormat)
+        private void ExportXmlWithValidation(bool useGaebFormat)
+        {
+            SetStatus("Validating data before export...");
+            ShowProgress(true);
+
+            try
+            {
+                var validationResult = projectManager.ValidateForExportEnhanced();
+
+                ShowProgress(false);
+                ShowEnhancedValidationResults(validationResult);
+
+                if (validationResult.HasErrors)
+                {
+                    var forceResult = MessageBox.Show(
+                        $"Validation found {validationResult.Errors.Count} critical error(s).\n\n" +
+                        "Exporting with errors may result in data that cannot be re-imported into AVA NOVA.\n\n" +
+                        "Do you want to force export anyway? (NOT RECOMMENDED)",
+                        "Critical Validation Errors",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Error,
+                        MessageBoxDefaultButton.Button2);
+
+                    if (forceResult != DialogResult.Yes)
+                    {
+                        SetStatus("Export cancelled due to validation errors");
+                        return;
+                    }
+                }
+
+                if (validationResult.HasWarnings && !validationResult.HasErrors)
+                {
+                    var proceedResult = MessageBox.Show(
+                        $"Validation found {validationResult.Warnings.Count} warning(s).\n\n" +
+                        "Warnings indicate potential issues but export should be safe.\n\n" +
+                        "Do you want to proceed with export?",
+                        "Validation Warnings",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+
+                    if (proceedResult != DialogResult.Yes)
+                    {
+                        SetStatus("Export cancelled by user");
+                        return;
+                    }
+                }
+
+                using (var dialog = new SaveFileDialog())
+                {
+                    dialog.Filter = "XML files (*.xml)|*.xml|All files (*.*)|*.*";
+                    dialog.Title = useGaebFormat ? "Export GAEB XML" : "Export AVA XML";
+                    dialog.FileName = $"NovaAva_Export_{DateTime.Now:yyyyMMdd_HHmmss}.xml";
+
+                    if (dialog.ShowDialog() == DialogResult.OK)
+                    {
+                        SetStatus("Exporting XML...");
+                        ShowProgress(true);
+
+                        projectManager.ExportAvaXmlSafe(dialog.FileName, useGaebFormat, forceExport: true);
+
+                        SetStatus($"XML exported: {Path.GetFileName(dialog.FileName)}");
+
+                        var message = $"Export completed successfully!\n\n" +
+                                     $"File: {Path.GetFileName(dialog.FileName)}\n" +
+                                     $"Elements: {projectManager.Elements.Count}";
+
+                        if (validationResult.HasWarnings)
+                        {
+                            message += $"\n\nNote: Exported with {validationResult.Warnings.Count} warning(s). " +
+                                      "Review validation report for details.";
+                        }
+
+                        var showFileResult = MessageBox.Show(
+                            message + "\n\nWould you like to open the exported file?",
+                            "Export Complete",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Information);
+
+                        if (showFileResult == DialogResult.Yes)
+                        {
+                            try
+                            {
+                                System.Diagnostics.Process.Start(dialog.FileName);
+                            }
+                            catch
+                            {
+                                MessageBox.Show($"Could not open file: {dialog.FileName}", "Error",
+                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error during export: {ex.Message}", "Export Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                SetStatus("Export failed");
+            }
+            finally
+            {
+                ShowProgress(false);
+            }
+        }
+
+        private void ShowComparisonWithOriginal()
+        {
+            if (!EnhancedValidator.OriginalXmlSchema.Any())
+            {
+                MessageBox.Show(
+                    "No original XML data available for comparison.\n\n" +
+                    "Import an XML file first to enable schema comparison.",
+                    "No Original Data",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            var comparison = projectManager.CompareWithOriginal();
+
+            using (var form = new Form())
+            {
+                form.Text = "Comparison with Original XML";
+                form.Size = new Size(700, 500);
+                form.StartPosition = FormStartPosition.CenterParent;
+                form.FormBorderStyle = FormBorderStyle.Sizable;
+                form.MinimumSize = new Size(500, 400);
+
+                var textBox = new TextBox
+                {
+                    Dock = DockStyle.Fill,
+                    Multiline = true,
+                    ReadOnly = true,
+                    ScrollBars = ScrollBars.Both,
+                    Font = new Font("Consolas", 9),
+                    Text = comparison.GetSummary()
+                };
+
+                form.Controls.Add(textBox);
+
+                var buttonPanel = new Panel
+                {
+                    Dock = DockStyle.Bottom,
+                    Height = 50
+                };
+
+                var btnClose = new Button
+                {
+                    Text = "Close",
+                    Location = new Point(form.Width - 100, 10),
+                    Size = new Size(80, 30),
+                    Anchor = AnchorStyles.Right
+                };
+                btnClose.Click += (s, e) => form.Close();
+                buttonPanel.Controls.Add(btnClose);
+
+                if (comparison.HasDifferences)
+                {
+                    var btnExport = new Button
+                    {
+                        Text = "Export Report",
+                        Location = new Point(20, 10),
+                        Size = new Size(120, 30)
+                    };
+                    btnExport.Click += (s, e) => ExportComparisonReport(comparison);
+                    buttonPanel.Controls.Add(btnExport);
+                }
+
+                form.Controls.Add(buttonPanel);
+                form.ShowDialog();
+            }
+        }
+
+        private void ExportComparisonReport(ComparisonResult comparison)
         {
             using (var dialog = new SaveFileDialog())
             {
-                dialog.Filter = "XML files (*.xml)|*.xml|All files (*.*)|*.*";
-                dialog.Title = useGaebFormat ? "Export GAEB XML" : "Export AVA XML";
-                dialog.FileName = $"NovaAva_Export_{DateTime.Now:yyyyMMdd_HHmmss}.xml";
+                dialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
+                dialog.Title = "Export Comparison Report";
+                dialog.FileName = $"Comparison_Report_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
 
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
                     try
                     {
-                        SetStatus("Exporting XML...");
-                        ShowProgress(true);
-
-                        projectManager.ExportAvaXml(dialog.FileName, useGaebFormat);
-                        SetStatus($"XML exported: {Path.GetFileName(dialog.FileName)}");
-
-                        // Show export preview
-                        ShowExportPreview(dialog.FileName);
+                        File.WriteAllText(dialog.FileName, comparison.GetSummary());
+                        MessageBox.Show("Comparison report exported successfully!", "Export Complete",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Error exporting XML: {ex.Message}", "Error",
+                        MessageBox.Show($"Error exporting report: {ex.Message}", "Export Error",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        SetStatus("Export failed");
-                    }
-                    finally
-                    {
-                        ShowProgress(false);
                     }
                 }
             }
@@ -611,13 +889,13 @@ namespace NovaAvaCostManagement
                                 MessageBoxButtons.YesNoCancel,
                                 MessageBoxIcon.Question);
 
-                            if (result == DialogResult.Yes) // Append
+                            if (result == DialogResult.Yes)
                             {
                                 projectManager.Elements.AddRange(convertedElements);
                                 RefreshDataGrid();
                                 SetStatus($"Template converted and appended: {convertedElements.Count} elements");
                             }
-                            else if (result == DialogResult.No) // Replace
+                            else if (result == DialogResult.No)
                             {
                                 projectManager.Elements.Clear();
                                 projectManager.Elements.AddRange(convertedElements);
@@ -649,11 +927,11 @@ namespace NovaAvaCostManagement
         {
             try
             {
-                SetStatus("Validating data...");
+                SetStatus("Running enhanced validation...");
                 ShowProgress(true);
 
-                var result = projectManager.ValidateForExport();
-                ShowValidationResults(result);
+                var result = projectManager.ValidateForExportEnhanced();
+                ShowEnhancedValidationResults(result);
             }
             catch (Exception ex)
             {
@@ -667,6 +945,232 @@ namespace NovaAvaCostManagement
             }
         }
 
+        private void ShowEnhancedValidationResults(ValidationResult result)
+        {
+            using (var form = new Form())
+            {
+                form.Text = "Enhanced Validation Results";
+                form.Size = new Size(800, 600);
+                form.StartPosition = FormStartPosition.CenterParent;
+                form.FormBorderStyle = FormBorderStyle.Sizable;
+                form.MinimumSize = new Size(600, 400);
+
+                var tabControl = new TabControl
+                {
+                    Dock = DockStyle.Fill
+                };
+
+                // Tab 1: Summary
+                var summaryTab = new TabPage("Summary");
+                var summaryPanel = CreateSummaryPanel(result);
+                summaryTab.Controls.Add(summaryPanel);
+                tabControl.TabPages.Add(summaryTab);
+
+                // Tab 2: Detailed Report
+                var reportTab = new TabPage("Detailed Report");
+                var reportText = new TextBox
+                {
+                    Dock = DockStyle.Fill,
+                    Multiline = true,
+                    ReadOnly = true,
+                    ScrollBars = ScrollBars.Both,
+                    Font = new Font("Consolas", 9F),
+                    Text = EnhancedValidator.GenerateValidationReport(result)
+                };
+                reportTab.Controls.Add(reportText);
+                tabControl.TabPages.Add(reportTab);
+
+                // Tab 3: Comparison with Original
+                if (EnhancedValidator.OriginalXmlSchema.Any())
+                {
+                    var comparisonTab = new TabPage("Original Comparison");
+                    var comparisonText = new TextBox
+                    {
+                        Dock = DockStyle.Fill,
+                        Multiline = true,
+                        ReadOnly = true,
+                        ScrollBars = ScrollBars.Both,
+                        Font = new Font("Consolas", 9F),
+                        Text = projectManager.CompareWithOriginal().GetSummary()
+                    };
+                    comparisonTab.Controls.Add(comparisonText);
+                    tabControl.TabPages.Add(comparisonTab);
+                }
+
+                form.Controls.Add(tabControl);
+
+                var buttonPanel = new Panel
+                {
+                    Dock = DockStyle.Bottom,
+                    Height = 50
+                };
+
+                var btnClose = new Button
+                {
+                    Text = "Close",
+                    Location = new Point(form.Width - 100, 10),
+                    Size = new Size(80, 30),
+                    Anchor = AnchorStyles.Right | AnchorStyles.Top
+                };
+                btnClose.Click += (s, e) => form.Close();
+                buttonPanel.Controls.Add(btnClose);
+
+                if (result.HasErrors)
+                {
+                    var btnExport = new Button
+                    {
+                        Text = "Export Anyway (Risky)",
+                        Location = new Point(form.Width - 200, 10),
+                        Size = new Size(150, 30),
+                        Anchor = AnchorStyles.Right | AnchorStyles.Top,
+                        BackColor = Color.Orange
+                    };
+                    btnExport.Click += (s, e) =>
+                    {
+                        var confirmResult = MessageBox.Show(
+                            "WARNING: Exporting with validation errors may result in data that cannot be imported back into AVA NOVA.\n\n" +
+                            "Are you absolutely sure you want to export anyway?",
+                            "Risky Export",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Warning);
+
+                        if (confirmResult == DialogResult.Yes)
+                        {
+                            form.DialogResult = DialogResult.Ignore;
+                            form.Close();
+                        }
+                    };
+                    buttonPanel.Controls.Add(btnExport);
+                }
+                else
+                {
+                    var btnProceed = new Button
+                    {
+                        Text = "Proceed to Export",
+                        Location = new Point(form.Width - 200, 10),
+                        Size = new Size(130, 30),
+                        Anchor = AnchorStyles.Right | AnchorStyles.Top,
+                        BackColor = Color.LightGreen
+                    };
+                    btnProceed.Click += (s, e) =>
+                    {
+                        form.DialogResult = DialogResult.OK;
+                        form.Close();
+                    };
+                    buttonPanel.Controls.Add(btnProceed);
+                }
+
+                form.Controls.Add(buttonPanel);
+                form.ShowDialog();
+            }
+        }
+
+        private Panel CreateSummaryPanel(ValidationResult result)
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20) };
+
+            int yPos = 20;
+
+            var statusLabel = new Label
+            {
+                Location = new Point(20, yPos),
+                Size = new Size(700, 60),
+                Font = new Font("Microsoft Sans Serif", 14F, FontStyle.Bold),
+                ForeColor = result.IsValid ? Color.Green : Color.Red,
+                Text = result.IsValid ?
+                    "✓ VALIDATION PASSED - Ready for Export" :
+                    "✗ VALIDATION FAILED - Cannot Export"
+            };
+            panel.Controls.Add(statusLabel);
+            yPos += 70;
+
+            var statsGroup = new GroupBox
+            {
+                Location = new Point(20, yPos),
+                Size = new Size(700, 120),
+                Text = "Validation Statistics"
+            };
+
+            var statsText = new Label
+            {
+                Location = new Point(10, 25),
+                Size = new Size(680, 90),
+                Font = new Font("Microsoft Sans Serif", 10F),
+                Text = $"Total Elements Validated: {projectManager.Elements.Count}\n" +
+                       $"Critical Errors: {result.Errors.Count}\n" +
+                       $"Warnings: {result.Warnings.Count}\n" +
+                       $"Schema Comparison: {(EnhancedValidator.OriginalXmlSchema.Any() ? "Available" : "Not Available")}"
+            };
+            statsGroup.Controls.Add(statsText);
+            panel.Controls.Add(statsGroup);
+            yPos += 130;
+
+            if (result.HasErrors)
+            {
+                var errorGroup = new GroupBox
+                {
+                    Location = new Point(20, yPos),
+                    Size = new Size(700, 150),
+                    Text = "Critical Errors (Must Fix)",
+                    ForeColor = Color.Red
+                };
+
+                var errorList = new ListBox
+                {
+                    Location = new Point(10, 25),
+                    Size = new Size(680, 115),
+                    Font = new Font("Consolas", 9F)
+                };
+
+                foreach (var error in result.Errors.Take(10))
+                {
+                    errorList.Items.Add(error);
+                }
+
+                if (result.Errors.Count > 10)
+                {
+                    errorList.Items.Add($"... and {result.Errors.Count - 10} more errors");
+                }
+
+                errorGroup.Controls.Add(errorList);
+                panel.Controls.Add(errorGroup);
+                yPos += 160;
+            }
+
+            if (result.HasWarnings)
+            {
+                var warningGroup = new GroupBox
+                {
+                    Location = new Point(20, yPos),
+                    Size = new Size(700, 150),
+                    Text = "Warnings (Should Review)",
+                    ForeColor = Color.Orange
+                };
+
+                var warningList = new ListBox
+                {
+                    Location = new Point(10, 25),
+                    Size = new Size(680, 115),
+                    Font = new Font("Consolas", 9F)
+                };
+
+                foreach (var warning in result.Warnings.Take(10))
+                {
+                    warningList.Items.Add(warning);
+                }
+
+                if (result.Warnings.Count > 10)
+                {
+                    warningList.Items.Add($"... and {result.Warnings.Count - 10} more warnings");
+                }
+
+                warningGroup.Controls.Add(warningList);
+                panel.Controls.Add(warningGroup);
+            }
+
+            return panel;
+        }
+
         private void ShowQuickDiagnostics()
         {
             var diagnostics = projectManager.GenerateQuickDiagnostics();
@@ -674,20 +1178,20 @@ namespace NovaAvaCostManagement
             using (var form = new Form())
             {
                 form.Text = "Quick Diagnostics";
-                form.Size = new Size(600, 500);  // Smaller initial size
+                form.Size = new Size(600, 500);
                 form.StartPosition = FormStartPosition.CenterParent;
-                form.FormBorderStyle = FormBorderStyle.Sizable;  // Make resizable
-                form.MinimumSize = new Size(400, 300);  // Set minimum size
+                form.FormBorderStyle = FormBorderStyle.Sizable;
+                form.MinimumSize = new Size(400, 300);
 
                 var textBox = new TextBox
                 {
                     Dock = DockStyle.Fill,
                     Multiline = true,
                     ReadOnly = true,
-                    ScrollBars = ScrollBars.Both,  // Both horizontal and vertical
+                    ScrollBars = ScrollBars.Both,
                     Font = new Font("Consolas", 9),
                     Text = diagnostics,
-                    WordWrap = false  // Allow horizontal scrolling
+                    WordWrap = false
                 };
 
                 form.Controls.Add(textBox);
@@ -787,14 +1291,13 @@ See CostElement class for complete field listing.";
                 "- PHP-serialized properties generation\n" +
                 "- Template-based workflows\n" +
                 "- Import/Export AVA and GAEB XML\n" +
-                "- Data validation and diagnostics\n\n" +
+                "- Enhanced validation and diagnostics\n\n" +
                 "Built with C# WinForms",
                 "About NOVA AVA Cost Management",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
 
-        // Element management
         private void AddElement()
         {
             using (var form = new ElementEditForm())
@@ -851,11 +1354,8 @@ See CostElement class for complete field listing.";
             }
         }
 
-        // Helper methods
         private bool ConfirmUnsavedChanges()
         {
-            // For now, just return true. In a full implementation, 
-            // you'd track dirty state and prompt user
             return true;
         }
 
@@ -870,41 +1370,16 @@ See CostElement class for complete field listing.";
             progressBar.Visible = show;
         }
 
-        private void ShowValidationResults(ValidationResult result)
-        {
-            using (var form = new ValidationResultForm(result))
-            {
-                form.ShowDialog();
-            }
-        }
-
-        private void ShowExportPreview(string filePath)
-        {
-            var result = MessageBox.Show(
-                $"Export completed successfully!\n\nFile: {Path.GetFileName(filePath)}\nElements: {projectManager.Elements.Count}\n\nWould you like to open the exported file?",
-                "Export Complete",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Information);
-
-            if (result == DialogResult.Yes)
-            {
-                try
-                {
-                    System.Diagnostics.Process.Start(filePath);
-                }
-                catch
-                {
-                    MessageBox.Show($"Could not open file: {filePath}", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-            }
-        }
         private void SearchBox_TextChanged(object sender, EventArgs e)
         {
             RefreshDataGrid();
         }
 
         private void MainForm_Load(object sender, EventArgs e)
+        {
+        }
+
+        private void MainForm_Load_1(object sender, EventArgs e)
         {
 
         }

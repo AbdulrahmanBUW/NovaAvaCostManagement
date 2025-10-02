@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace NovaAvaCostManagement
 {
@@ -152,12 +153,13 @@ namespace NovaAvaCostManagement
         }
 
         /// <summary>
-        /// Validate the cost element
+        /// Enhanced validation with LongText syntax checking
         /// </summary>
         public List<string> Validate()
         {
             var errors = new List<string>();
 
+            // Critical fields
             if (string.IsNullOrWhiteSpace(Id))
                 errors.Add("ID is required");
 
@@ -167,22 +169,147 @@ namespace NovaAvaCostManagement
             if (string.IsNullOrWhiteSpace(Text))
                 errors.Add("Text is required");
 
-            if (string.IsNullOrWhiteSpace(LongText))
-                errors.Add("LongText is required");
+            // LongText validation - not always required but must be valid when present
+            if (!string.IsNullOrWhiteSpace(LongText))
+            {
+                if (LongText.Length > 2000)
+                    errors.Add($"LongText exceeds maximum length of 2000 characters (current: {LongText.Length})");
 
-            if (Text.Length > 255)
-                errors.Add("Text must be 255 characters or less");
+                // Check for XML-invalid characters
+                if (ContainsInvalidXmlCharacters(LongText))
+                    errors.Add("LongText contains invalid XML characters");
 
-            if (LongText.Length > 2000)
-                errors.Add("LongText must be 2000 characters or less");
+                // Syntax validation
+                var syntaxErrors = ValidateLongTextSyntax(LongText);
+                errors.AddRange(syntaxErrors);
+            }
+            else if (RequiresLongText())
+            {
+                errors.Add("LongText is required for this element type");
+            }
 
+            // Text length validation
+            if (!string.IsNullOrWhiteSpace(Text) && Text.Length > 255)
+                errors.Add($"Text exceeds maximum length of 255 characters (current: {Text.Length})");
+
+            // Numeric validation
             if (Qty < 0)
-                errors.Add("Quantity must be non-negative");
+                errors.Add("Quantity cannot be negative");
 
             if (Up < 0)
-                errors.Add("Unit price must be non-negative");
+                errors.Add("Unit price cannot be negative");
+
+            // Calculated fields validation
+            decimal expectedSum = Qty * Up;
+            if (Math.Abs(Sum - expectedSum) > 0.01m)
+                errors.Add($"Sum calculation error. Expected {expectedSum:F2}, got {Sum:F2}");
+
+            // Properties validation when IFC type is specified
+            if (!string.IsNullOrWhiteSpace(IfcType))
+            {
+                if (string.IsNullOrWhiteSpace(Properties))
+                    errors.Add("Properties are required when IFC type is specified");
+                else
+                {
+                    var propErrors = ValidatePropertiesFormat(Properties);
+                    errors.AddRange(propErrors);
+                }
+            }
 
             return errors;
+        }
+
+        /// <summary>
+        /// Check if this element requires LongText
+        /// </summary>
+        private bool RequiresLongText()
+        {
+            // LongText required for elements with:
+            // - IFC type specified
+            // - Properties defined
+            // - Pricing information (Up > 0 or Qty > 0)
+            return !string.IsNullOrWhiteSpace(IfcType) ||
+                   !string.IsNullOrWhiteSpace(Properties) ||
+                   Up > 0 ||
+                   Qty > 0;
+        }
+
+        /// <summary>
+        /// Validate LongText syntax for AVA NOVA compliance
+        /// </summary>
+        private List<string> ValidateLongTextSyntax(string longText)
+        {
+            var errors = new List<string>();
+
+            // Check balanced brackets
+            if (CountChar(longText, '(') != CountChar(longText, ')'))
+                errors.Add("LongText has unbalanced parentheses");
+
+            if (CountChar(longText, '[') != CountChar(longText, ']'))
+                errors.Add("LongText has unbalanced square brackets");
+
+            // Check for incomplete technical specifications
+            if (System.Text.RegularExpressions.Regex.IsMatch(longText, @"DN\s*$|DIN\s*$|EN\s*$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                errors.Add("LongText contains incomplete technical specification (DN/DIN/EN without number)");
+
+            // Check for trailing special characters that might cause parsing issues
+            if (System.Text.RegularExpressions.Regex.IsMatch(longText, @"[,;\-]\s*$"))
+                errors.Add("LongText has trailing punctuation that may cause issues");
+
+            // Check for multiple consecutive spaces
+            if (longText.Contains("  "))
+                errors.Add("LongText contains multiple consecutive spaces");
+
+            // Check consistency with Text field - FIXED for .NET Framework 4.8
+            if (longText.IndexOf(Text, StringComparison.OrdinalIgnoreCase) < 0)
+                errors.Add("LongText should typically contain the Text content");
+
+            return errors;
+        }
+
+        /// <summary>
+        /// Validate properties field format
+        /// </summary>
+        private List<string> ValidatePropertiesFormat(string properties)
+        {
+            var errors = new List<string>();
+
+            if (!properties.StartsWith("a:") || !properties.Contains("{") || !properties.EndsWith("}"))
+                errors.Add("Properties format is invalid (not proper PHP serialization)");
+
+            if (CountChar(properties, '{') != CountChar(properties, '}'))
+                errors.Add("Properties have unbalanced braces");
+
+            // Validate array count
+            var match = System.Text.RegularExpressions.Regex.Match(properties, @"^a:(\d+):");
+            if (match.Success)
+            {
+                int declaredCount = int.Parse(match.Groups[1].Value);
+                int actualCount = System.Text.RegularExpressions.Regex.Matches(
+                    properties, @"s:\d+:""[^""]*"";s:\d+:""[^""]*"";").Count;
+
+                if (declaredCount != actualCount)
+                    errors.Add($"Properties array count mismatch (declared: {declaredCount}, actual: {actualCount})");
+            }
+
+            return errors;
+        }
+
+        /// <summary>
+        /// Check for invalid XML characters
+        /// </summary>
+        private bool ContainsInvalidXmlCharacters(string text)
+        {
+            return text.Any(c => c < 0x20 && c != 0x09 && c != 0x0A && c != 0x0D);
+        }
+
+        /// <summary>
+        /// Count occurrences of a character
+        /// </summary>
+        private int CountChar(string text, char c)
+        {
+            return text.Count(ch => ch == c);
         }
     }
 }

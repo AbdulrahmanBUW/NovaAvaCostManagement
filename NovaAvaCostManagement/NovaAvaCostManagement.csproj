@@ -60,6 +60,7 @@
     <Compile Include="ElementEditForm.Designer.cs">
       <DependentUpon>ElementEditForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="EnhancedValidator.cs" />
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
