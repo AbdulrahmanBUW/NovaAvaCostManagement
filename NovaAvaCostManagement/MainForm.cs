@@ -16,7 +16,7 @@ namespace NovaAvaCostManagement
     public partial class MainForm : Form
     {
         private ProjectManager projectManager;
-        private DataGridView dataGridView;
+        private ExcelLikeDataGrid dataGridView;
         private MenuStrip menuStrip;
         private ToolStrip toolStrip;
         private StatusStrip statusStrip;
@@ -29,7 +29,6 @@ namespace NovaAvaCostManagement
         {
             InitializeCustomComponents();
             projectManager = new ProjectManager();
-            projectManager.CreateNewProject();
             RefreshDataGrid();
         }
 
@@ -75,6 +74,26 @@ namespace NovaAvaCostManagement
         {
             contextMenu = new ContextMenuStrip();
 
+            // Excel-like operations first
+            var copyItem = new ToolStripMenuItem("Copy (Ctrl+C)");
+            copyItem.Click += (s, e) => dataGridView?.CopyCells();
+            contextMenu.Items.Add(copyItem);
+
+            var cutItem = new ToolStripMenuItem("Cut (Ctrl+X)");
+            cutItem.Click += (s, e) => dataGridView?.CutCells();
+            contextMenu.Items.Add(cutItem);
+
+            var pasteItem = new ToolStripMenuItem("Paste (Ctrl+V)");
+            pasteItem.Click += (s, e) => dataGridView?.PasteCells();
+            contextMenu.Items.Add(pasteItem);
+
+            var deleteItem = new ToolStripMenuItem("Clear Cells (Del)");
+            deleteItem.Click += (s, e) => dataGridView?.ClearSelectedCells();
+            contextMenu.Items.Add(deleteItem);
+
+            contextMenu.Items.Add(new ToolStripSeparator());
+
+            // Element operations
             var insertAboveItem = new ToolStripMenuItem("Insert Element Above");
             insertAboveItem.Click += (s, e) => InsertElementAbove();
             contextMenu.Items.Add(insertAboveItem);
@@ -85,15 +104,115 @@ namespace NovaAvaCostManagement
 
             contextMenu.Items.Add(new ToolStripSeparator());
 
-            var editItem = new ToolStripMenuItem("Edit Element");
+            var editItem = new ToolStripMenuItem("Edit Element Form");
             editItem.Click += (s, e) => EditElement();
             contextMenu.Items.Add(editItem);
 
-            var deleteItem = new ToolStripMenuItem("Delete Element");
-            deleteItem.Click += (s, e) => DeleteElement();
-            contextMenu.Items.Add(deleteItem);
+            var deleteElementItem = new ToolStripMenuItem("Delete Element");
+            deleteElementItem.Click += (s, e) => DeleteElement();
+            contextMenu.Items.Add(deleteElementItem);
 
             dataGridView.ContextMenuStrip = contextMenu;
+        }
+
+        /// <summary>
+        /// Sync cell value changes back to the underlying CostElement objects
+        /// </summary>
+        private void DataGridView_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        {
+            try
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0)
+                    return;
+
+                var row = dataGridView.Rows[e.RowIndex];
+                var element = row.DataBoundItem as CostElement;
+
+                if (element == null)
+                    return;
+
+                var column = dataGridView.Columns[e.ColumnIndex];
+                var propertyName = column.DataPropertyName;
+                var newValue = row.Cells[e.ColumnIndex].Value;
+
+                // Update the property using reflection
+                var property = typeof(CostElement).GetProperty(propertyName);
+                if (property != null && property.CanWrite)
+                {
+                    // Convert value to correct type
+                    object convertedValue = ConvertCellValue(newValue, property.PropertyType);
+                    property.SetValue(element, convertedValue);
+
+                    // Recalculate if quantity or price changed
+                    if (propertyName == "Qty" || propertyName == "Up")
+                    {
+                        element.CalculateFields();
+
+                        // Update the Sum cell
+                        var sumColumn = dataGridView.Columns.Cast<DataGridViewColumn>()
+                            .FirstOrDefault(c => c.DataPropertyName == "Sum");
+                        if (sumColumn != null)
+                        {
+                            row.Cells[sumColumn.Index].Value = element.Sum;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Cell value change error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Convert cell value to the appropriate type
+        /// </summary>
+        private object ConvertCellValue(object value, Type targetType)
+        {
+            if (value == null || value == DBNull.Value)
+            {
+                if (targetType == typeof(string))
+                    return "";
+                if (targetType == typeof(decimal))
+                    return 0m;
+                if (targetType == typeof(int))
+                    return 0;
+                if (targetType == typeof(bool))
+                    return false;
+                if (targetType == typeof(DateTime))
+                    return DateTime.Now;
+                return null;
+            }
+
+            if (targetType == typeof(decimal))
+            {
+                if (decimal.TryParse(value.ToString(), out decimal result))
+                    return result;
+                return 0m;
+            }
+
+            if (targetType == typeof(int))
+            {
+                if (int.TryParse(value.ToString(), out int result))
+                    return result;
+                return 0;
+            }
+
+            if (targetType == typeof(bool))
+            {
+                if (bool.TryParse(value.ToString(), out bool result))
+                    return result;
+                return false;
+            }
+
+            if (targetType == typeof(DateTime))
+            {
+                if (DateTime.TryParse(value.ToString(), out DateTime result))
+                    return result;
+                return DateTime.Now;
+            }
+
+            return value.ToString();
         }
 
         /// <summary>
@@ -101,15 +220,15 @@ namespace NovaAvaCostManagement
         /// </summary>
         private void InsertElementAbove()
         {
-            if (dataGridView.SelectedRows.Count == 0)
+            if (dataGridView.CurrentCell == null)
             {
                 MessageBox.Show("Please select a row to insert above.", "No Selection",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            var selectedRow = dataGridView.SelectedRows[0];
-            var selectedElement = selectedRow.Tag as CostElement;
+            var currentRow = dataGridView.Rows[dataGridView.CurrentCell.RowIndex];
+            var selectedElement = currentRow.DataBoundItem as CostElement;
 
             if (selectedElement == null)
             {
@@ -174,6 +293,7 @@ namespace NovaAvaCostManagement
             menuStrip = new MenuStrip();
             menuStrip.Dock = DockStyle.Top;
 
+            // 1. FILE MENU
             var fileMenu = new ToolStripMenuItem("&File");
             fileMenu.DropDownItems.Add("&New Project", null, (s, e) => NewProject());
             fileMenu.DropDownItems.Add("&Open Project...", null, (s, e) => OpenProject());
@@ -187,12 +307,51 @@ namespace NovaAvaCostManagement
             fileMenu.DropDownItems.Add("E&xit", null, (s, e) => this.Close());
             menuStrip.Items.Add(fileMenu);
 
+            // 2. EDIT MENU
+            var editMenu = new ToolStripMenuItem("&Edit");
+
+            var copyItem = new ToolStripMenuItem("&Copy", null, (s, e) => dataGridView?.CopyCells());
+            copyItem.ShortcutKeys = Keys.Control | Keys.C;
+            editMenu.DropDownItems.Add(copyItem);
+
+            var cutItem = new ToolStripMenuItem("Cu&t", null, (s, e) => dataGridView?.CutCells());
+            cutItem.ShortcutKeys = Keys.Control | Keys.X;
+            editMenu.DropDownItems.Add(cutItem);
+
+            var pasteItem = new ToolStripMenuItem("&Paste", null, (s, e) => dataGridView?.PasteCells());
+            pasteItem.ShortcutKeys = Keys.Control | Keys.V;
+            editMenu.DropDownItems.Add(pasteItem);
+
+            var deleteItem = new ToolStripMenuItem("&Delete", null, (s, e) => dataGridView?.ClearSelectedCells());
+            deleteItem.ShortcutKeys = Keys.Delete;
+            editMenu.DropDownItems.Add(deleteItem);
+
+            editMenu.DropDownItems.Add(new ToolStripSeparator());
+
+            var undoItem = new ToolStripMenuItem("&Undo", null, (s, e) => dataGridView?.Undo());
+            undoItem.ShortcutKeys = Keys.Control | Keys.Z;
+            editMenu.DropDownItems.Add(undoItem);
+
+            var redoItem = new ToolStripMenuItem("&Redo", null, (s, e) => dataGridView?.Redo());
+            redoItem.ShortcutKeys = Keys.Control | Keys.Y;
+            editMenu.DropDownItems.Add(redoItem);
+
+            editMenu.DropDownItems.Add(new ToolStripSeparator());
+
+            var fillDownItem = new ToolStripMenuItem("Fill &Down", null, (s, e) => dataGridView?.FillDown());
+            fillDownItem.ShortcutKeys = Keys.Control | Keys.D;
+            editMenu.DropDownItems.Add(fillDownItem);
+
+            menuStrip.Items.Add(editMenu);
+
+            // 3. TEMPLATE MENU
             var templateMenu = new ToolStripMenuItem("&Template");
             templateMenu.DropDownItems.Add("Create &Data Entry Template...", null, (s, e) => CreateDataEntryTemplate());
             templateMenu.DropDownItems.Add("Create &IFC Mapping Template...", null, (s, e) => CreateIFCMappingTemplate());
             templateMenu.DropDownItems.Add("&Convert Template to Main...", null, (s, e) => ConvertTemplateToMain());
             menuStrip.Items.Add(templateMenu);
 
+            // 4. TOOLS MENU
             var toolsMenu = new ToolStripMenuItem("&Tools");
             toolsMenu.DropDownItems.Add("&Validate Data", null, (s, e) => ValidateData());
             toolsMenu.DropDownItems.Add("&Quick Diagnostics", null, (s, e) => ShowQuickDiagnostics());
@@ -201,6 +360,7 @@ namespace NovaAvaCostManagement
             toolsMenu.DropDownItems.Add("&Compare with Original XML", null, (s, e) => ShowComparisonWithOriginal());
             menuStrip.Items.Add(toolsMenu);
 
+            // 5. HELP MENU
             var helpMenu = new ToolStripMenuItem("&Help");
             helpMenu.DropDownItems.Add("&About", null, (s, e) => ShowAbout());
             menuStrip.Items.Add(helpMenu);
@@ -229,6 +389,11 @@ namespace NovaAvaCostManagement
             toolStrip.Items.Add(new ToolStripButton("Export AVA", null, (s, e) => ExportAvaXml()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
             toolStrip.Items.Add(new ToolStripSeparator());
             toolStrip.Items.Add(new ToolStripButton("Validate", null, (s, e) => ValidateData()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
+            toolStrip.Items.Add(new ToolStripSeparator());
+            toolStrip.Items.Add(new ToolStripButton("Copy (Ctrl+C)", null, (s, e) => dataGridView?.CopyCells()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
+            toolStrip.Items.Add(new ToolStripButton("Paste (Ctrl+V)", null, (s, e) => dataGridView?.PasteCells()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
+            toolStrip.Items.Add(new ToolStripButton("Undo (Ctrl+Z)", null, (s, e) => dataGridView?.Undo()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
+            toolStrip.Items.Add(new ToolStripButton("Redo (Ctrl+Y)", null, (s, e) => dataGridView?.Redo()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
 
             this.Controls.Add(toolStrip);
         }
@@ -270,20 +435,17 @@ namespace NovaAvaCostManagement
 
             mainPanel.Controls.Add(searchPanel);
 
-            dataGridView = new DataGridView
+            dataGridView = new ExcelLikeDataGrid
             {
                 Dock = DockStyle.Fill,
                 AutoGenerateColumns = false,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-                MultiSelect = false,
-                AllowUserToAddRows = false,
-                ReadOnly = true,
                 AllowUserToResizeColumns = true,
                 AllowUserToOrderColumns = true,
-                AllowUserToResizeRows = false,
-                RowHeadersWidth = 25,
                 BackgroundColor = Color.White,
-                BorderStyle = BorderStyle.Fixed3D
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
+                ColumnHeadersVisible = true,  // ADD THIS
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,  // ADD THIS
+                ColumnHeadersHeight = 30  // ADD THIS
             };
 
             SetupDataGridViewColumns();
@@ -332,20 +494,35 @@ namespace NovaAvaCostManagement
                     {
                         row.Tag = element;
 
-                        if (!string.IsNullOrEmpty(element.Color))
+                        // Apply hierarchy styling
+                        if (element.IsParentNode)
+                        {
+                            // PARENT: Bold, light blue background, no indent
+                            row.DefaultCellStyle.BackColor = Color.FromArgb(220, 235, 255);
+                            row.DefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+                            row.DefaultCellStyle.ForeColor = Color.DarkBlue;
+                        }
+                        else
+                        {
+                            // CHILD: Normal font, white background, slight indent via padding
+                            row.DefaultCellStyle.BackColor = Color.White;
+                            row.DefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
+                            row.DefaultCellStyle.ForeColor = Color.Black;
+                            row.DefaultCellStyle.Padding = new Padding(15, 0, 0, 0);  // Indent children
+                        }
+
+                        // Apply custom colors if specified (only for children)
+                        if (!string.IsNullOrEmpty(element.Color) && !element.IsParentNode)
                         {
                             try
                             {
                                 var color = ColorTranslator.FromHtml(element.Color);
                                 row.DefaultCellStyle.BackColor = Color.FromArgb(50, color);
                             }
-                            catch
-                            {
-                            }
+                            catch { }
                         }
                     }
                 }
-
                 UpdateStatusBar();
             }
             catch (Exception ex)
@@ -353,6 +530,26 @@ namespace NovaAvaCostManagement
                 MessageBox.Show($"Error refreshing grid: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+            // Attach event to sync cell changes back to data model
+            dataGridView.CellValueChanged -= DataGridView_CellValueChanged;
+            dataGridView.CellValueChanged += DataGridView_CellValueChanged;
+        }
+
+        /// <summary>
+        /// Helper method to add an editable text column
+        /// </summary>
+        private void AddEditableColumn(string name, string dataPropertyName, string headerText, int width, bool frozen, bool readOnly)
+        {
+            var column = new DataGridViewTextBoxColumn
+            {
+                Name = name,
+                DataPropertyName = dataPropertyName,
+                HeaderText = headerText,
+                Width = width,
+                Frozen = frozen,
+                ReadOnly = readOnly
+            };
+            dataGridView.Columns.Add(column);
         }
 
         /// <summary>
@@ -365,45 +562,49 @@ namespace NovaAvaCostManagement
 
             dataGridView.AutoGenerateColumns = false;
             dataGridView.ColumnHeadersVisible = true;
-            dataGridView.RowHeadersVisible = false;
+            dataGridView.ColumnHeadersHeight = 25;
+            dataGridView.RowHeadersVisible = true;
             dataGridView.AllowUserToAddRows = false;
-            dataGridView.ReadOnly = true;
-            dataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dataGridView.MultiSelect = false;
+            dataGridView.ReadOnly = false;
+            dataGridView.SelectionMode = DataGridViewSelectionMode.CellSelect;
+            dataGridView.MultiSelect = true;
             dataGridView.AllowUserToResizeRows = false;
             dataGridView.AllowUserToResizeColumns = true;
-            dataGridView.ScrollBars = ScrollBars.Both;
             dataGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
 
-            dataGridView.EnableHeadersVisualStyles = true;
+            dataGridView.EnableHeadersVisualStyles = false;
             dataGridView.RowTemplate.Height = 28;
             dataGridView.DefaultCellStyle.Font = new Font("Segoe UI", 9F);
+            dataGridView.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+            dataGridView.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
 
-            AddColumn("colVersion", "Version", "Ver", 50, true);
-            AddColumn("colId", "Id", "ID", 50, true);
-            AddColumn("colId2", "Id2", "Code", 150, true);
-            AddColumn("colName", "Name", "Name", 200, true);
+            // FROZEN COLUMNS FIRST - Keep only 1-2 frozen for better scrolling
+            AddEditableColumn("colId2", "Id2", "Code", 120, true, false);
 
-            AddColumn("colType", "Type", "Type", 80, false);
-            AddColumn("colText", "Text", "Text", 180, false);
-            AddColumn("colLongText", "LongText", "Long Text", 200, false);
+            // ALL UNFROZEN COLUMNS
+            AddEditableColumn("colName", "Name", "Name", 180, false, false);
+            AddEditableColumn("colVersion", "Version", "Ver", 50, false, false);
+            AddEditableColumn("colId", "Id", "ID", 50, false, false);
+            AddEditableColumn("colType", "Type", "Type", 80, false, false);
+            AddEditableColumn("colText", "Text", "Description", 200, false, false);
+            AddEditableColumn("colLongText", "LongText", "Long Text", 250, false, false);
 
-            AddNumericColumn("colQty", "Qty", "Quantity", 80, false);
-            AddColumn("colQu", "Qu", "Unit", 60, false);
-            AddNumericColumn("colUp", "Up", "Unit Price", 90, false);
-            AddNumericColumn("colSum", "Sum", "Total", 100, false, true);
+            AddNumericColumn("colQty", "Qty", "Quantity", 80, false, false);
+            AddEditableColumn("colQu", "Qu", "Unit", 50, false, false);
+            AddNumericColumn("colUp", "Up", "Unit Price", 90, false, false);
+            AddNumericColumn("colSum", "Sum", "Total", 100, false, true, true);
 
-            AddColumn("colProperties", "Properties", "Properties", 200, false);
-
-            AddColumn("colBimKey", "BimKey", "BIM Key", 100, false);
-            AddColumn("colNote", "Note", "Note", 150, false);
-            AddColumn("colColor", "Color", "Color", 80, false);
+            AddEditableColumn("colProperties", "Properties", "Properties", 150, false, true);
+            AddEditableColumn("colBimKey", "BimKey", "BIM Key", 100, false, false);
+            AddEditableColumn("colNote", "Note", "Note", 150, false, false);
+            AddEditableColumn("colColor", "Color", "Color", 80, false, false);
 
             dataGridView.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(248, 248, 248);
             dataGridView.RowsDefaultCellStyle.BackColor = Color.White;
             dataGridView.GridColor = Color.FromArgb(220, 220, 220);
             dataGridView.BackgroundColor = Color.White;
             dataGridView.BorderStyle = BorderStyle.Fixed3D;
+            dataGridView.ScrollBars = ScrollBars.Both;
         }
 
         /// <summary>
@@ -426,7 +627,7 @@ namespace NovaAvaCostManagement
         /// <summary>
         /// Helper method to add a numeric column
         /// </summary>
-        private void AddNumericColumn(string name, string dataPropertyName, string headerText, int width, bool frozen, bool bold = false)
+        private void AddNumericColumn(string name, string dataPropertyName, string headerText, int width, bool frozen, bool readOnly, bool bold = false)
         {
             var column = new DataGridViewTextBoxColumn
             {
@@ -435,7 +636,7 @@ namespace NovaAvaCostManagement
                 HeaderText = headerText,
                 Width = width,
                 Frozen = frozen,
-                ReadOnly = true,
+                ReadOnly = readOnly,
                 DefaultCellStyle = new DataGridViewCellStyle
                 {
                     Alignment = DataGridViewContentAlignment.MiddleRight,
@@ -1333,14 +1534,24 @@ See CostElement class for complete field listing.";
 
         private void EditElement()
         {
-            if (dataGridView.SelectedRows.Count == 0)
+            // Get the current cell's row
+            if (dataGridView.CurrentCell == null)
             {
                 MessageBox.Show("Please select an element to edit.", "No Selection",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            var selectedElement = (CostElement)dataGridView.SelectedRows[0].Tag;
+            var currentRow = dataGridView.Rows[dataGridView.CurrentCell.RowIndex];
+            var selectedElement = currentRow.DataBoundItem as CostElement;
+
+            if (selectedElement == null)
+            {
+                MessageBox.Show("Invalid selection.", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             using (var form = new ElementEditForm(selectedElement))
             {
                 if (form.ShowDialog() == DialogResult.OK)
@@ -1355,10 +1566,20 @@ See CostElement class for complete field listing.";
 
         private void DeleteElement()
         {
-            if (dataGridView.SelectedRows.Count == 0)
+            if (dataGridView.CurrentCell == null)
             {
                 MessageBox.Show("Please select an element to delete.", "No Selection",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var currentRow = dataGridView.Rows[dataGridView.CurrentCell.RowIndex];
+            var selectedElement = currentRow.DataBoundItem as CostElement;
+
+            if (selectedElement == null)
+            {
+                MessageBox.Show("Invalid selection.", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -1367,7 +1588,6 @@ See CostElement class for complete field listing.";
 
             if (result == DialogResult.Yes)
             {
-                var selectedElement = (CostElement)dataGridView.SelectedRows[0].Tag;
                 projectManager.Elements.Remove(selectedElement);
                 RefreshDataGrid();
                 SetStatus("Element deleted");

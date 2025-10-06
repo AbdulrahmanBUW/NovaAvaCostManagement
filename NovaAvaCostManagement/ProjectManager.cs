@@ -288,34 +288,7 @@ namespace NovaAvaCostManagement
             Elements.Clear();
             LogMessages.Clear();
             ProjectFilePath = null;
-
-            // Add sample element
-            var sampleElement = new CostElement
-            {
-                Id2 = "CAST_Pipe_DIN10216-2_DN125",
-                Name = "C-Stahl Rohr DIN EN 10216-2 P235HTC1 DN125",
-                Type = "Pipe",
-                Text = "C-Stahl Rohr DN125",
-                LongText = "C-Stahl Rohr DIN EN 10216-2 P235HTC1 DN125",
-                Qty = 37.09m,
-                Qu = "m",
-                Up = 0.11m,
-                BimKey = "PIPE_001",
-                Description = "Steel pipe for construction",
-                Label = "DN125 Pipe",
-                Note = "Sample pipe element",
-                IfcType = "IFCPIPESEGMENT",
-                Material = "P235HTC1",
-                Dimension = "DN125",
-                SegmentType = "DX_CarbonSteel_1.0345 - DIN EN 10216-2",
-                Color = "#3498DB"
-            };
-
-            sampleElement.GenerateProperties();
-            sampleElement.CalculateFields();
-            Elements.Add(sampleElement);
-
-            AddLogMessage("New project created with sample data");
+            AddLogMessage("New project created");
         }
 
         /// <summary>

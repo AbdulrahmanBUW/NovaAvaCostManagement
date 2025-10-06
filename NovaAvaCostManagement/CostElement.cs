@@ -31,7 +31,18 @@ namespace NovaAvaCostManagement
         public int Order { get; set; } = 0;
         public string Ident { get; set; }
         public string BimKey { get; set; } = "";
+        public int CalculationId { get; set; } = 0;  // The 'id' from cecalculation
+        public int ParentCalcId { get; set; } = 0;   // Parent calculation
+        public string CatalogReference { get; set; } = "";
+        public int ElementType { get; set; } = 1;    // The 'type' from costelement
+        public int FilterValue { get; set; } = 0;
+        public int ChildrenCount { get; set; } = 0;
+        public int OpeningsCount { get; set; } = 0;
 
+        // Hierarchy fields
+        public int ElementId { get; set; } = 0;
+        public bool IsParentNode { get; set; } = false;
+        public int TreeLevel { get; set; } = 0;
         // Text fields
         public string Text { get; set; } = "";
         public string LongText { get; set; } = "";

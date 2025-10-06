@@ -2,19 +2,12 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Windows.Forms;
 using System.Xml.Linq;
 
 namespace NovaAvaCostManagement
 {
-    /// <summary>
-    /// Handles importing AVA/NOVA XML files
-    /// </summary>
     public class XmlImporter
     {
-        /// <summary>
-        /// Import cost elements from AVA/NOVA XML
-        /// </summary>
         public static List<CostElement> ImportFromXml(string filePath)
         {
             var elements = new List<CostElement>();
@@ -23,139 +16,108 @@ namespace NovaAvaCostManagement
             {
                 var doc = XDocument.Load(filePath);
 
-                // Debug: Show what was loaded
-                MessageBox.Show($"XML loaded. Root element: {doc.Root?.Name}");
+                // Find all costelement nodes
+                var costElementNodes = doc.Descendants()
+                    .Where(x => x.Name.LocalName.ToLower() == "costelement");
 
-                // Try different possible root structures
-                var itemNodes = doc.Descendants().Where(x =>
-                x.Name.LocalName.ToLower().Contains("element") ||
-                x.Name.LocalName.ToLower().Contains("item") ||
-                x.Name.LocalName.ToLower().Contains("cost") ||
-                x.Elements().Any(e => e.Name.LocalName.ToLower() == "name" || e.Name.LocalName.ToLower() == "text"));
-
-                // Debug: Show how many nodes found
-                MessageBox.Show($"Found {itemNodes.Count()} potential element nodes");
-
-                foreach (var node in itemNodes)
+                foreach (var elementNode in costElementNodes)
                 {
-                    var element = ParseXmlNode(node);
-                    if (element != null)
+                    // Get element-level data
+                    var elementId = elementNode.Attribute("id")?.Value ?? "0";
+                    var elementName = elementNode.Element("name")?.Value ?? "";
+                    var elementType = elementNode.Element("type")?.Value ?? "1";
+                    var created = elementNode.Element("created")?.Value ?? "";
+
+                    // Parse child calculations
+                    var calculationsNode = elementNode.Element("cecalculations");
+                    if (calculationsNode != null)
                     {
-                        elements.Add(element);
+                        var calculations = calculationsNode.Elements("cecalculation");
+
+                        foreach (var calcNode in calculations)
+                        {
+                            var element = ParseCalculationNode(calcNode, elementId);
+                            if (element != null)
+                            {
+                                elements.Add(element);
+                            }
+                        }
                     }
                 }
-
-                // Debug: Show final count
-                MessageBox.Show($"Successfully parsed {elements.Count} elements");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Import error: {ex.Message}");
                 throw new Exception($"Error importing XML: {ex.Message}", ex);
             }
 
             return elements;
         }
 
-        /// <summary>
-        /// Parse individual XML node to CostElement
-        /// </summary>
-        private static CostElement ParseXmlNode(XElement node)
+        private static CostElement ParseCalculationNode(XElement node, string parentElementId)
         {
             var element = new CostElement();
 
-            try
+            // Parse all fields exactly as they are in the XML
+            element.Id = GetElementValue(node, "id") ?? "0";
+            element.Id2 = GetElementValue(node, "ident") ?? "";
+            element.Ident = element.Id2;
+            element.Order = int.Parse(GetElementValue(node, "order") ?? "0");
+            element.BimKey = GetElementValue(node, "bimkey") ?? "";
+            element.Text = GetElementValue(node, "text") ?? "";
+            element.LongText = GetElementValue(node, "longtext") ?? "";
+            element.Name = element.Text;
+            element.Qu = GetElementValue(node, "qu") ?? "";
+            element.ProcUnit = element.Qu;
+            element.On = GetElementValue(node, "on") ?? "";
+            element.StlNo = GetElementValue(node, "stlno") ?? "";
+            element.Note = GetElementValue(node, "note") ?? "";
+            element.Color = GetElementValue(node, "color") ?? "";
+            element.Additional = GetElementValue(node, "additional") ?? "";
+
+            // Parse numeric fields
+            element.Qty = ParseDecimal(GetElementValue(node, "qty_result"));
+            element.Up = ParseDecimal(GetElementValue(node, "up"));
+            element.UpResult = ParseDecimal(GetElementValue(node, "up_result"));
+            element.It = ParseDecimal(GetElementValue(node, "it"));
+            element.Vat = ParseDecimal(GetElementValue(node, "vat"));
+            element.VatValue = ParseDecimal(GetElementValue(node, "vatvalue"));
+            element.Tax = ParseDecimal(GetElementValue(node, "tax"));
+            element.TaxValue = ParseDecimal(GetElementValue(node, "taxvalue"));
+            element.ItGross = ParseDecimal(GetElementValue(node, "itgross"));
+            element.Sum = ParseDecimal(GetElementValue(node, "sum"));
+
+            // Price components
+            for (int i = 1; i <= 6; i++)
             {
-                // Map common XML elements to properties
-                element.Id = GetElementValue(node, "id") ?? element.Id;
-                element.Id2 = GetElementValue(node, "id2") ??
-                              GetElementValue(node, "code") ??
-                              GetElementValue(node, "Code") ??
-                              element.Id2;
-                element.Name = GetElementValue(node, "name") ??
-                               GetElementValue(node, "Name") ??
-                               GetElementValue(node, "title") ??
-                               GetElementValue(node, "code") ?? "";
-                element.Type = GetElementValue(node, "type") ?? "";
-                element.Text = GetElementValue(node, "text") ??
-                               GetElementValue(node, "Text") ??
-                               GetElementValue(node, "name") ??
-                               GetElementValue(node, "code") ?? "";
-                element.LongText = GetElementValue(node, "longtext") ??
-                               GetElementValue(node, "LongText") ??
-                               GetElementValue(node, "description") ??
-                               GetElementValue(node, "Description") ??
-                               GetElementValue(node, "name") ?? "";
-                element.Label = GetElementValue(node, "label") ?? "";
-                element.BimKey = GetElementValue(node, "bimkey") ?? "";
-                element.Properties = GetElementValue(node, "properties") ?? "";
-                element.Note = GetElementValue(node, "note") ?? "";
-                element.Color = GetElementValue(node, "color") ?? "";
-                element.Qu = GetElementValue(node, "unit") ?? GetElementValue(node, "qu") ?? "";
-                element.ProcUnit = element.Qu;
-
-                // Parse numeric fields
-                if (decimal.TryParse(GetElementValue(node, "quantity") ?? GetElementValue(node, "qty"), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal qty))
-                    element.Qty = qty;
-
-                if (decimal.TryParse(GetElementValue(node, "unitprice") ?? GetElementValue(node, "up"), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal up))
-                    element.Up = up;
-
-                if (decimal.TryParse(GetElementValue(node, "total") ?? GetElementValue(node, "sum"), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal total))
-                    element.Sum = total;
-
-                // Parse IFC-specific fields if present
-                element.IfcType = GetElementValue(node, "ifc_type") ?? GetElementValue(node, "ifctype") ?? "";
-                element.Material = GetElementValue(node, "material") ?? "";
-                element.Dimension = GetElementValue(node, "dimension") ?? "";
-                element.SegmentType = GetElementValue(node, "segment_type") ?? GetElementValue(node, "segmenttype") ?? "";
-
-                // Parse timestamps
-                if (DateTime.TryParse(GetElementValue(node, "created"), out DateTime created))
-                    element.Created = created;
-
-                // Store unknown elements in AdditionalData
-                foreach (var childNode in node.Elements())
-                {
-                    var name = childNode.Name.LocalName;
-                    if (!IsKnownElement(name))
-                    {
-                        element.AdditionalData[name] = childNode.Value;
-                    }
-                }
-
-                element.CalculateFields();
-
-                return element;
+                var compValue = ParseDecimal(GetElementValue(node, $"upcomp{i}"));
+                typeof(CostElement).GetProperty($"UpComp{i}").SetValue(element, compValue);
             }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error parsing XML node: {ex.Message}", ex);
-            }
+
+            element.CalculateFields();
+            return element;
         }
 
-        /// <summary>
-        /// Get element value safely
-        /// </summary>
         private static string GetElementValue(XElement parent, string elementName)
         {
-            return parent.Element(elementName)?.Value;
+            var element = parent.Element(elementName);
+            if (element == null) return null;
+
+            var cdata = element.Nodes().OfType<XCData>().FirstOrDefault();
+            if (cdata != null)
+                return cdata.Value.Trim();
+
+            return element.Value?.Trim();
         }
 
-        /// <summary>
-        /// Check if element name is known/mapped
-        /// </summary>
-        private static bool IsKnownElement(string name)
+        private static decimal ParseDecimal(string value)
         {
-            var knownElements = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "id", "id2", "code", "name", "type", "text", "longtext", "description", "label",
-                "bimkey", "properties", "note", "color", "unit", "qu", "quantity", "qty",
-                "unitprice", "up", "total", "sum", "ifc_type", "ifctype", "material",
-                "dimension", "segment_type", "segmenttype", "created"
-            };
+            if (string.IsNullOrWhiteSpace(value))
+                return 0m;
 
-            return knownElements.Contains(name);
+            if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result))
+                return result;
+
+            return 0m;
         }
     }
 }
