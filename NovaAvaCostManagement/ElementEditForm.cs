@@ -576,7 +576,7 @@ namespace NovaAvaCostManagement
                 CostElement.Up = 0;
 
             // Always calculate fields to ensure Sum is correct
-            CostElement.CalculateFields();
+            CostElement.RecalculateSum();
 
             this.DialogResult = DialogResult.OK;
             this.Close();

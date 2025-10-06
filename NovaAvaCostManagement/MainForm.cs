@@ -37,21 +37,17 @@ namespace NovaAvaCostManagement
         /// </summary>
         private void InitializeCustomComponents()
         {
-            this.Size = new Size(800, 650);
-            this.StartPosition = FormStartPosition.CenterParent;
-            this.FormBorderStyle = FormBorderStyle.Sizable;
-            this.MaximizeBox = true;
-            this.MinimizeBox = true;
-            this.MinimumSize = new Size(600, 400);
-            this.Text = "NOVA AVA Cost Management";
+            this.Size = new Size(1400, 800);
+            this.StartPosition = FormStartPosition.CenterScreen;
+            this.Text = "NOVA AVA Cost Management - Bulk Editor";
+            this.MinimumSize = new Size(1000, 600);
 
-            CreateMenuStrip();
-            CreateToolStrip();
-            CreateStatusStrip();
-            CreateMainContent();
-            CreateContextMenu();
-
-            AddElementsMenu();
+            // Add controls in correct order (bottom to top for Dock)
+            CreateStatusStrip();      // Dock.Bottom
+            CreateToolStrip();        // Dock.Top
+            CreateMenuStrip();        // Dock.Top (MainMenuStrip)
+            CreateMainContent();      // Dock.Fill
+            CreateContextMenu();      // Not docked
         }
 
         /// <summary>
@@ -120,47 +116,24 @@ namespace NovaAvaCostManagement
         /// </summary>
         private void DataGridView_CellValueChanged(object sender, DataGridViewCellEventArgs e)
         {
-            try
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+
+            var row = dataGridView.Rows[e.RowIndex];
+            var element = row.DataBoundItem as CostElement;
+            if (element == null) return;
+
+            var column = dataGridView.Columns[e.ColumnIndex];
+            var propertyName = column.DataPropertyName;
+
+            // ONLY recalculate Sum if Qty or Up changed
+            if (propertyName == "Qty" || propertyName == "Up")
             {
-                if (e.RowIndex < 0 || e.ColumnIndex < 0)
-                    return;
+                element.RecalculateSum();
 
-                var row = dataGridView.Rows[e.RowIndex];
-                var element = row.DataBoundItem as CostElement;
-
-                if (element == null)
-                    return;
-
-                var column = dataGridView.Columns[e.ColumnIndex];
-                var propertyName = column.DataPropertyName;
-                var newValue = row.Cells[e.ColumnIndex].Value;
-
-                // Update the property using reflection
-                var property = typeof(CostElement).GetProperty(propertyName);
-                if (property != null && property.CanWrite)
-                {
-                    // Convert value to correct type
-                    object convertedValue = ConvertCellValue(newValue, property.PropertyType);
-                    property.SetValue(element, convertedValue);
-
-                    // Recalculate if quantity or price changed
-                    if (propertyName == "Qty" || propertyName == "Up")
-                    {
-                        element.CalculateFields();
-
-                        // Update the Sum cell
-                        var sumColumn = dataGridView.Columns.Cast<DataGridViewColumn>()
-                            .FirstOrDefault(c => c.DataPropertyName == "Sum");
-                        if (sumColumn != null)
-                        {
-                            row.Cells[sumColumn.Index].Value = element.Sum;
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Cell value change error: {ex.Message}");
+                // Refresh Sum cell
+                var sumCell = row.Cells["colSum"];
+                if (sumCell != null)
+                    sumCell.Value = element.Sum;
             }
         }
 
@@ -403,23 +376,27 @@ namespace NovaAvaCostManagement
         /// </summary>
         private void CreateMainContent()
         {
+            int topOffset = menuStrip.Height + toolStrip.Height;
             var mainPanel = new Panel
             {
-                Dock = DockStyle.Fill,
+                Location = new Point(0, topOffset),
+                Size = new Size(this.ClientSize.Width, this.ClientSize.Height - topOffset - statusStrip.Height),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Padding = new Padding(5)
             };
 
+            // Search panel at top
             var searchPanel = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 35,
-                Padding = new Padding(0, 5, 0, 5)
+                Height = 40,
+                Padding = new Padding(5)
             };
 
             var searchLabel = new Label
             {
                 Text = "Search:",
-                Location = new Point(5, 8),
+                Location = new Point(5, 10),
                 Size = new Size(50, 20),
                 AutoSize = false
             };
@@ -427,31 +404,42 @@ namespace NovaAvaCostManagement
 
             searchBox = new TextBox
             {
-                Location = new Point(60, 6),
-                Size = new Size(250, 23)
+                Location = new Point(60, 8),
+                Size = new Size(300, 23),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left
             };
             searchBox.TextChanged += SearchBox_TextChanged;
             searchPanel.Controls.Add(searchBox);
 
+            // Add search panel to main panel
             mainPanel.Controls.Add(searchPanel);
 
+            // Data grid - fill remaining space
             dataGridView = new ExcelLikeDataGrid
             {
                 Dock = DockStyle.Fill,
                 AutoGenerateColumns = false,
                 AllowUserToResizeColumns = true,
-                AllowUserToOrderColumns = true,
                 BackgroundColor = Color.White,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
-                ColumnHeadersVisible = true,  // ADD THIS
-                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,  // ADD THIS
-                ColumnHeadersHeight = 30  // ADD THIS
+                ColumnHeadersVisible = true,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+                ColumnHeadersHeight = 30,
+                ReadOnly = false,
+                EditMode = DataGridViewEditMode.EditOnEnter,
+                RowHeadersWidth = 40,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false
             };
 
             SetupDataGridViewColumns();
+            dataGridView.CellValueChanged += DataGridView_CellValueChanged;
             dataGridView.DoubleClick += (s, e) => EditElement();
+
+            // Add grid below search panel
             mainPanel.Controls.Add(dataGridView);
 
+            // Add main panel to form
             this.Controls.Add(mainPanel);
         }
 
@@ -557,54 +545,26 @@ namespace NovaAvaCostManagement
         /// </summary>
         private void SetupDataGridViewColumns()
         {
-            dataGridView.DataSource = null;
             dataGridView.Columns.Clear();
 
-            dataGridView.AutoGenerateColumns = false;
-            dataGridView.ColumnHeadersVisible = true;
-            dataGridView.ColumnHeadersHeight = 25;
-            dataGridView.RowHeadersVisible = true;
-            dataGridView.AllowUserToAddRows = false;
-            dataGridView.ReadOnly = false;
-            dataGridView.SelectionMode = DataGridViewSelectionMode.CellSelect;
-            dataGridView.MultiSelect = true;
-            dataGridView.AllowUserToResizeRows = false;
-            dataGridView.AllowUserToResizeColumns = true;
-            dataGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+            // CRITICAL: Show Id2 (ident) as the Code column - this is what user sees
+            AddEditableColumn("colCode", "Id2", "Code", 250, true, false);
 
-            dataGridView.EnableHeadersVisualStyles = false;
-            dataGridView.RowTemplate.Height = 28;
-            dataGridView.DefaultCellStyle.Font = new Font("Segoe UI", 9F);
-            dataGridView.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
-            dataGridView.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-
-            // FROZEN COLUMNS FIRST - Keep only 1-2 frozen for better scrolling
-            AddEditableColumn("colId2", "Id2", "Code", 120, true, false);
-
-            // ALL UNFROZEN COLUMNS
-            AddEditableColumn("colName", "Name", "Name", 180, false, false);
-            AddEditableColumn("colVersion", "Version", "Ver", 50, false, false);
-            AddEditableColumn("colId", "Id", "ID", 50, false, false);
-            AddEditableColumn("colType", "Type", "Type", 80, false, false);
-            AddEditableColumn("colText", "Text", "Description", 200, false, false);
-            AddEditableColumn("colLongText", "LongText", "Long Text", 250, false, false);
+            // Show other fields exactly as they are
+            AddEditableColumn("colText", "Text", "Text", 300, false, false);
+            AddEditableColumn("colLongText", "LongText", "Long Text", 350, false, false);
 
             AddNumericColumn("colQty", "Qty", "Quantity", 80, false, false);
-            AddEditableColumn("colQu", "Qu", "Unit", 50, false, false);
-            AddNumericColumn("colUp", "Up", "Unit Price", 90, false, false);
-            AddNumericColumn("colSum", "Sum", "Total", 100, false, true, true);
+            AddEditableColumn("colQu", "Qu", "Unit", 60, false, false);
+            AddNumericColumn("colUp", "Up", "Unit Price", 100, false, false);
+            AddNumericColumn("colSum", "Sum", "Total", 100, false, false);  // Make editable
 
-            AddEditableColumn("colProperties", "Properties", "Properties", 150, false, true);
-            AddEditableColumn("colBimKey", "BimKey", "BIM Key", 100, false, false);
-            AddEditableColumn("colNote", "Note", "Note", 150, false, false);
-            AddEditableColumn("colColor", "Color", "Color", 80, false, false);
+            AddEditableColumn("colBimKey", "BimKey", "BIM Key", 150, false, false);
+            AddEditableColumn("colNote", "Note", "Notes", 200, false, false);
 
-            dataGridView.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(248, 248, 248);
-            dataGridView.RowsDefaultCellStyle.BackColor = Color.White;
-            dataGridView.GridColor = Color.FromArgb(220, 220, 220);
-            dataGridView.BackgroundColor = Color.White;
-            dataGridView.BorderStyle = BorderStyle.Fixed3D;
-            dataGridView.ScrollBars = ScrollBars.Both;
+            // Info columns
+            AddEditableColumn("colId", "Id", "Element ID", 60, false, true);
+            AddEditableColumn("colCalcId", "CalculationId", "Calc ID", 60, false, true);
         }
 
         /// <summary>

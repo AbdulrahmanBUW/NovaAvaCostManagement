@@ -353,13 +353,17 @@ namespace NovaAvaCostManagement
         /// <summary>
         /// Import from AVA XML
         /// </summary>
+        /// <summary>
+        /// Import from AVA XML
+        /// </summary>
         public void ImportAvaXml(string filePath)
         {
             try
             {
                 var importedElements = XmlImporter.ImportFromXml(filePath);
+                Elements.Clear();
                 Elements.AddRange(importedElements);
-                AddLogMessage($"Imported {importedElements.Count} elements from AVA XML");
+                AddLogMessage($"Imported {importedElements.Count} elements from {filePath}");
             }
             catch (Exception ex)
             {
@@ -368,14 +372,14 @@ namespace NovaAvaCostManagement
         }
 
         /// <summary>
-        /// Export to AVA XML
+        /// Export to AVA XML - DisplayNumber is NOT exported
         /// </summary>
         public void ExportAvaXml(string filePath, bool useGaebFormat = false)
         {
             try
             {
                 XmlExporter.ExportToXml(Elements, filePath, useGaebFormat);
-                AddLogMessage($"Exported {Elements.Count} elements to AVA XML");
+                AddLogMessage($"Exported {Elements.Count} elements to {filePath}");
             }
             catch (Exception ex)
             {

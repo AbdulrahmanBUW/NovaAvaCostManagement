@@ -159,9 +159,7 @@ namespace NovaAvaCostManagement
                 }
             }
 
-            // Generate properties and calculate fields
-            element.GenerateProperties();
-            element.CalculateFields();
+            element.RecalculateSum();
 
             return element;
         }

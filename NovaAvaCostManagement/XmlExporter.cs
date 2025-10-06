@@ -1,20 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
+using System.Linq;
 using System.Text;
 using System.Xml;
 
 namespace NovaAvaCostManagement
 {
     /// <summary>
-    /// Handles exporting cost elements to AVA/NOVA XML
+    /// Exports to AVA NOVA XML format - EXACT structure as input
+    /// DisplayNumber is NOT exported (display-only field)
     /// </summary>
     public class XmlExporter
     {
-        /// <summary>
-        /// Export cost elements to NOVA/AVA compatible XML
-        /// </summary>
         public static void ExportToXml(List<CostElement> elements, string filePath, bool useGaebFormat = false)
         {
             try
@@ -45,112 +43,143 @@ namespace NovaAvaCostManagement
         }
 
         /// <summary>
-        /// Write NOVA/AVA format XML
+        /// Write in exact NOVA AVA format - matching input structure
         /// </summary>
         private static void WriteNovaAvaFormat(XmlWriter writer, List<CostElement> elements)
         {
             writer.WriteStartDocument();
-            writer.WriteStartElement("CostElements");
+            writer.WriteStartElement("cefexport");
             writer.WriteAttributeString("version", "2");
-            writer.WriteAttributeString("title", "Cost Elements_NotAssigned");
-            writer.WriteAttributeString("created", DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"));
 
-            foreach (var element in elements)
+            // Write buildingfilters section (if needed)
+            writer.WriteStartElement("buildingfilters");
+            writer.WriteEndElement();
+
+            // Write costelements
+            writer.WriteStartElement("costelements");
+
+            // Group by element ID (parent level)
+            var grouped = elements.GroupBy(e => e.Id).OrderBy(g => g.Key).ToList();
+
+            foreach (var group in grouped)
             {
-                writer.WriteStartElement("Element");
+                // Get parent element (IsParentNode = true)
+                var parentElement = group.FirstOrDefault(e => e.IsParentNode) ?? group.First();
 
-                // Write all standard fields
-                WriteElementField(writer, "version", element.Version);
-                WriteElementField(writer, "id", element.Id);
-                WriteElementField(writer, "title", element.Title);
-                WriteElementField(writer, "label", element.Label);
-                WriteElementField(writer, "criteria", element.Criteria);
-                WriteElementField(writer, "created", element.Created.ToString("yyyy-MM-ddTHH:mm:ss"));
-                WriteElementField(writer, "id2", element.Id2);
-                WriteElementField(writer, "type", element.Type);
-                WriteElementField(writer, "name", element.Name);
-                WriteElementField(writer, "description", element.Description);
-                WriteElementField(writer, "properties", element.Properties);
-                WriteElementField(writer, "children", element.Children);
-                WriteElementField(writer, "openings", element.Openings);
-                WriteElementField(writer, "created3", element.Created3.ToString("yyyy-MM-ddTHH:mm:ss"));
-                WriteElementField(writer, "label4", element.Label4);
-                WriteElementField(writer, "id5", element.Id5);
-                WriteElementField(writer, "parent", element.Parent);
-                WriteElementField(writer, "order", element.Order.ToString());
-                WriteElementField(writer, "ident", element.Ident);
-                WriteElementField(writer, "bimkey", element.BimKey);
-                WriteElementField(writer, "text", element.Text);
-                WriteElementField(writer, "longtext", element.LongText);
-                WriteElementField(writer, "text_sys", element.TextSys);
-                WriteElementField(writer, "text_key", element.TextKey);
-                WriteElementField(writer, "stlno", element.StlNo);
-                WriteElementField(writer, "outlinetext_free", element.OutlineTextFree);
-                WriteElementField(writer, "qty", element.Qty.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "qty_result", element.QtyResult.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "qu", element.Qu);
-                WriteElementField(writer, "up", element.Up.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "up_result", element.UpResult.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "upbkdn", element.UpBkdn.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "upcomp1", element.UpComp1.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "upcomp2", element.UpComp2.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "upcomp3", element.UpComp3.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "upcomp4", element.UpComp4.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "upcomp5", element.UpComp5.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "upcomp6", element.UpComp6.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "timequ", element.TimeQu);
-                WriteElementField(writer, "it", element.It.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "vat", element.Vat.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "vatvalue", element.VatValue.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "tax", element.Tax.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "taxvalue", element.TaxValue.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "itgross", element.ItGross.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "sum", element.Sum.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "vob", element.Vob);
-                WriteElementField(writer, "vob_formula", element.VobFormula);
-                WriteElementField(writer, "vob_condition", element.VobCondition);
-                WriteElementField(writer, "vob_type", element.VobType);
-                WriteElementField(writer, "vob_factor", element.VobFactor.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "on", element.On);
-                WriteElementField(writer, "perctotal", element.PercTotal.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "marked", element.Marked.ToString().ToLower());
-                WriteElementField(writer, "percmarked", element.PercMarked.ToString(CultureInfo.InvariantCulture));
-                WriteElementField(writer, "procunit", element.ProcUnit);
-                WriteElementField(writer, "color", element.Color);
-                WriteElementField(writer, "note", element.Note);
-                WriteElementField(writer, "additional", element.Additional);
-                WriteElementField(writer, "id6", element.Id6);
-                WriteElementField(writer, "filepath", element.FilePath);
-                WriteElementField(writer, "filename", element.FileName);
-                WriteElementField(writer, "data", element.Data);
-                WriteElementField(writer, "catalogname", element.CatalogName);
-                WriteElementField(writer, "catalogtype", element.CatalogType);
-                WriteElementField(writer, "name7", element.Name7);
-                WriteElementField(writer, "number", element.Number);
-                WriteElementField(writer, "reference", element.Reference);
-                WriteElementField(writer, "filter", element.Filter);
+                writer.WriteStartElement("costelement");
+                writer.WriteAttributeString("id", parentElement.Id);
 
-                // Write IFC-specific fields
-                WriteElementField(writer, "ifc_type", element.IfcType);
-                WriteElementField(writer, "material", element.Material);
-                WriteElementField(writer, "dimension", element.Dimension);
-                WriteElementField(writer, "segment_type", element.SegmentType);
+                // Write costelement-level fields
+                WriteElement(writer, "type", parentElement.ElementType.ToString());
+                WriteElement(writer, "name", parentElement.Name);
+                WriteElement(writer, "description", parentElement.Description);
 
-                // Write additional data
-                foreach (var kvp in element.AdditionalData)
+                // Write properties with CDATA
+                if (!string.IsNullOrEmpty(parentElement.Properties))
                 {
-                    WriteElementField(writer, kvp.Key, kvp.Value?.ToString() ?? "");
+                    writer.WriteStartElement("properties");
+                    writer.WriteCData(parentElement.Properties);
+                    writer.WriteEndElement();
+                }
+                else
+                {
+                    WriteElement(writer, "properties", "");
                 }
 
-                writer.WriteEndElement(); // Element
+                WriteElement(writer, "children", parentElement.ChildrenCount.ToString());
+                WriteElement(writer, "openings", parentElement.OpeningsCount.ToString());
+                WriteElement(writer, "created", parentElement.Created.ToString("yyyy-MM-ddTHH:mm:ss"));
+
+                // Write cecalculations section
+                writer.WriteStartElement("cecalculations");
+
+                // Write all calculations for this element, ordered by Order field
+                foreach (var calc in group.OrderBy(e => e.Order))
+                {
+                    writer.WriteStartElement("cecalculation");
+
+                    // CRITICAL: Write exact values from XML - NO DisplayNumber
+                    WriteElement(writer, "id", calc.CalculationId.ToString());
+                    WriteElement(writer, "parent", calc.ParentCalcId.ToString());
+                    WriteElement(writer, "order", calc.Order.ToString());
+                    WriteElement(writer, "ident", calc.Ident);
+                    WriteElement(writer, "bimkey", calc.BimKey);
+
+                    // Write text with CDATA
+                    if (!string.IsNullOrEmpty(calc.Text))
+                    {
+                        writer.WriteStartElement("text");
+                        writer.WriteCData(calc.Text);
+                        writer.WriteEndElement();
+                    }
+                    else
+                    {
+                        WriteElement(writer, "text", "");
+                    }
+
+                    // Write longtext with CDATA
+                    if (!string.IsNullOrEmpty(calc.LongText))
+                    {
+                        writer.WriteStartElement("longtext");
+                        writer.WriteCData(calc.LongText);
+                        writer.WriteEndElement();
+                    }
+                    else
+                    {
+                        WriteElement(writer, "longtext", "");
+                    }
+
+                    WriteElement(writer, "text_sys", calc.TextSys);
+                    WriteElement(writer, "text_key", calc.TextKey);
+                    WriteElement(writer, "stlno", calc.StlNo);
+                    WriteElement(writer, "outlinetext_free", calc.OutlineTextFree);
+                    WriteElement(writer, "qty", "DXQuantity");  // Keep formula if present
+                    WriteElement(writer, "qty_result", FormatDecimal(calc.QtyResult));
+                    WriteElement(writer, "qu", calc.Qu);
+                    WriteElement(writer, "up", FormatDecimal(calc.Up));
+                    WriteElement(writer, "up_result", FormatDecimal(calc.UpResult));
+                    WriteElement(writer, "upbkdn", FormatDecimal(calc.UpBkdn));
+                    WriteElement(writer, "upcomp1", FormatDecimal(calc.UpComp1));
+                    WriteElement(writer, "upcomp2", FormatDecimal(calc.UpComp2));
+                    WriteElement(writer, "upcomp3", FormatDecimal(calc.UpComp3));
+                    WriteElement(writer, "upcomp4", FormatDecimal(calc.UpComp4));
+                    WriteElement(writer, "upcomp5", FormatDecimal(calc.UpComp5));
+                    WriteElement(writer, "upcomp6", FormatDecimal(calc.UpComp6));
+                    WriteElement(writer, "timequ", FormatDecimal(calc.TimeQu));
+                    WriteElement(writer, "it", FormatDecimal(calc.It));
+                    WriteElement(writer, "vat", FormatDecimal(calc.Vat));
+                    WriteElement(writer, "vatvalue", FormatDecimal(calc.VatValue));
+                    WriteElement(writer, "tax", FormatDecimal(calc.Tax));
+                    WriteElement(writer, "taxvalue", FormatDecimal(calc.TaxValue));
+                    WriteElement(writer, "itgross", FormatDecimal(calc.ItGross));
+                    WriteElement(writer, "sum", FormatDecimal(calc.Sum));
+                    WriteElement(writer, "vob", calc.Vob);
+                    WriteElement(writer, "vob_formula", calc.VobFormula);
+                    WriteElement(writer, "vob_condition", calc.VobCondition);
+                    WriteElement(writer, "vob_type", calc.VobType);
+                    WriteElement(writer, "vob_factor", FormatDecimal(calc.VobFactor));
+                    WriteElement(writer, "on", calc.On);
+                    WriteElement(writer, "perctotal", FormatDecimal(calc.PercTotal));
+                    WriteElement(writer, "marked", calc.Marked ? "1" : "0");
+                    WriteElement(writer, "percmarked", FormatDecimal(calc.PercMarked));
+                    WriteElement(writer, "procunit", calc.ProcUnit);
+                    WriteElement(writer, "color", calc.Color);
+                    WriteElement(writer, "note", calc.Note);
+
+                    writer.WriteEndElement(); // cecalculation
+                }
+
+                writer.WriteEndElement(); // cecalculations
+                writer.WriteEndElement(); // costelement
             }
 
-            writer.WriteEndElement(); // CostElements
+            writer.WriteEndElement(); // costelements
+            writer.WriteEndElement(); // cefexport
             writer.WriteEndDocument();
         }
 
         /// <summary>
-        /// Write GAEB format XML
+        /// Write GAEB format (alternative export)
         /// </summary>
         private static void WriteGaebFormat(XmlWriter writer, List<CostElement> elements)
         {
@@ -159,10 +188,10 @@ namespace NovaAvaCostManagement
             writer.WriteAttributeString("version", "3.2");
 
             writer.WriteStartElement("GAEBInfo");
-            writer.WriteElementString("Version", "3.2");
-            writer.WriteElementString("Date", DateTime.Now.ToString("yyyy-MM-dd"));
-            writer.WriteElementString("Time", DateTime.Now.ToString("HH:mm:ss"));
-            writer.WriteEndElement(); // GAEBInfo
+            WriteElement(writer, "Version", "3.2");
+            WriteElement(writer, "Date", DateTime.Now.ToString("yyyy-MM-dd"));
+            WriteElement(writer, "Time", DateTime.Now.ToString("HH:mm:ss"));
+            writer.WriteEndElement();
 
             writer.WriteStartElement("Award");
             writer.WriteStartElement("BoQ");
@@ -172,16 +201,16 @@ namespace NovaAvaCostManagement
                 writer.WriteStartElement("Item");
                 writer.WriteAttributeString("RNoPart", element.Id);
 
-                writer.WriteElementString("Description", element.Text);
-                writer.WriteElementString("LongText", element.LongText);
-                writer.WriteElementString("Unit", element.Qu);
-                writer.WriteElementString("Qty", element.Qty.ToString(CultureInfo.InvariantCulture));
-                writer.WriteElementString("UP", element.Up.ToString(CultureInfo.InvariantCulture));
-                writer.WriteElementString("Total", element.Sum.ToString(CultureInfo.InvariantCulture));
+                WriteElement(writer, "Description", element.Text);
+                WriteElement(writer, "LongText", element.LongText);
+                WriteElement(writer, "Unit", element.Qu);
+                WriteElement(writer, "Qty", FormatDecimal(element.Qty));
+                WriteElement(writer, "UP", FormatDecimal(element.Up));
+                WriteElement(writer, "Total", FormatDecimal(element.Sum));
 
                 if (!string.IsNullOrEmpty(element.Properties))
                 {
-                    writer.WriteElementString("Properties", element.Properties);
+                    WriteElement(writer, "Properties", element.Properties);
                 }
 
                 writer.WriteEndElement(); // Item
@@ -194,21 +223,33 @@ namespace NovaAvaCostManagement
         }
 
         /// <summary>
-        /// Write XML element field safely
+        /// Write XML element safely
         /// </summary>
-        private static void WriteElementField(XmlWriter writer, string name, string value)
+        private static void WriteElement(XmlWriter writer, string name, string value)
         {
             writer.WriteElementString(name, value ?? "");
         }
 
         /// <summary>
-        /// Generate unique output file path
+        /// Format decimal for XML output
         /// </summary>
-        public static string GenerateUniqueOutputPath(string directory, string baseName, string extension)
+        private static string FormatDecimal(decimal value)
         {
-            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            var fileName = $"{baseName}_{timestamp}.{extension}";
-            return Path.Combine(directory, fileName);
+            return value.ToString("0.000", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Format decimal from string
+        /// </summary>
+        private static string FormatDecimal(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "0.000";
+
+            if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result))
+                return result.ToString("0.000", CultureInfo.InvariantCulture);
+
+            return "0.000";
         }
     }
 }
