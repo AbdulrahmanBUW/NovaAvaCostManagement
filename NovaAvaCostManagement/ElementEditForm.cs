@@ -6,9 +6,6 @@ using System.Windows.Forms;
 
 namespace NovaAvaCostManagement
 {
-    /// <summary>
-    /// Simplified element edit form - shows editable fields + read-only info
-    /// </summary>
     public partial class ElementEditForm : Form
     {
         public CostElement CostElement { get; private set; }
@@ -30,7 +27,6 @@ namespace NovaAvaCostManagement
         private Button btnOK, btnCancel;
         private Panel scrollPanel, buttonPanel;
 
-        // Constructor for designer compatibility
         public ElementEditForm() : this(null, 1) { }
 
         public ElementEditForm(CostElement element, int nextId) : this(element, nextId, new List<string>()) { }
@@ -43,7 +39,6 @@ namespace NovaAvaCostManagement
 
             if (element == null)
             {
-                // New element
                 CostElement = new CostElement();
                 CostElement.Id = nextAvailableId.ToString();
                 CostElement.Ident = Guid.NewGuid().ToString();
@@ -51,7 +46,6 @@ namespace NovaAvaCostManagement
             }
             else
             {
-                // Edit existing
                 CostElement = element.Clone();
                 this.Text = "Edit Element";
             }
@@ -67,7 +61,6 @@ namespace NovaAvaCostManagement
             this.FormBorderStyle = FormBorderStyle.Sizable;
             this.MinimumSize = new Size(700, 600);
 
-            // Main container
             var mainContainer = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -86,12 +79,10 @@ namespace NovaAvaCostManagement
 
             int yPos = 20;
             const int labelWidth = 120;
-            const int textBoxWidth = 400;
+            const int textBoxWidth = 500;
             const int spacing = 35;
 
-            // ============================================
             // SECTION 1: EDITABLE FIELDS
-            // ============================================
             var lblEditableSection = new Label
             {
                 Text = "EDITABLE FIELDS",
@@ -139,8 +130,7 @@ namespace NovaAvaCostManagement
             {
                 Text = "Generate",
                 Location = new Point(460, yPos),
-                Size = new Size(80, 23),
-                BackColor = Color.LightBlue
+                Size = new Size(80, 23)
             };
             btnGenerateGuid.Click += BtnGenerateGuid_Click;
             scrollPanel.Controls.Add(btnGenerateGuid);
@@ -181,12 +171,10 @@ namespace NovaAvaCostManagement
             // Unit
             AddLabelAndTextBox("Unit (qu):", ref txtQu, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // ============================================
             // IFC SECTION
-            // ============================================
             var lblIfcSection = new Label
             {
-                Text = "IFC PARAMETERS (for Properties generation)",
+                Text = "IFC PARAMETERS",
                 Location = new Point(20, yPos),
                 Size = new Size(textBoxWidth + 150, 25),
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
@@ -211,14 +199,12 @@ namespace NovaAvaCostManagement
                 DropDownStyle = ComboBoxStyle.DropDown
             };
 
-            // Populate with available IFC types from XML
             if (availableIfcTypes != null && availableIfcTypes.Any())
             {
                 cmbIfcType.Items.AddRange(availableIfcTypes.ToArray());
             }
             else
             {
-                // Default IFC types if none from XML
                 cmbIfcType.Items.AddRange(new[] {
                     "IFCPIPESEGMENT", "IFCPIPEFITTING", "IFCWALL", "IFCBEAM",
                     "IFCSLAB", "IFCDOOR", "IFCWINDOW", "IFCCOLUMN"
@@ -251,20 +237,18 @@ namespace NovaAvaCostManagement
 
             btnGenerateProperties = new Button
             {
-                Text = "Generate Properties",
-                Location = new Point(560, yPos),
-                Size = new Size(80, 40)
+                Text = "Generate",
+                Location = new Point(150, yPos + 45),
+                Size = new Size(80, 25)
             };
             btnGenerateProperties.Click += BtnGenerateProperties_Click;
             scrollPanel.Controls.Add(btnGenerateProperties);
-            yPos += 50;
+            yPos += 80;
 
-            // ============================================
             // SECTION 2: READ-ONLY INFORMATION
-            // ============================================
             grpReadOnly = new GroupBox
             {
-                Text = "READ-ONLY INFORMATION (from XML)",
+                Text = "READ-ONLY INFORMATION",
                 Location = new Point(20, yPos),
                 Size = new Size(textBoxWidth + 150, 180),
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold)
@@ -292,9 +276,7 @@ namespace NovaAvaCostManagement
 
             scrollPanel.AutoScrollMinSize = new Size(0, yPos + 20);
 
-            // ============================================
             // BUTTON PANEL
-            // ============================================
             buttonPanel = new Panel
             {
                 Dock = DockStyle.Bottom,
@@ -308,7 +290,6 @@ namespace NovaAvaCostManagement
                 Size = new Size(100, 35),
                 Location = new Point(mainContainer.Width - 220, 15),
                 Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
-                BackColor = Color.LightGreen,
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold)
             };
             btnOK.Click += BtnOK_Click;
@@ -382,7 +363,6 @@ namespace NovaAvaCostManagement
 
         private void LoadElementData()
         {
-            // Editable fields
             txtName.Text = CostElement.Name;
             txtChildren.Text = CostElement.Children;
             txtCatalogName.Text = CostElement.CatalogName;
@@ -394,14 +374,12 @@ namespace NovaAvaCostManagement
             txtUp.Text = CostElement.Up.ToString();
             txtQu.Text = CostElement.Qu;
 
-            // Load IFC Type from existing properties
             string currentIfcType = CostElement.GetIfcTypeFromProperties();
             if (!string.IsNullOrEmpty(currentIfcType))
             {
                 cmbIfcType.Text = currentIfcType;
             }
 
-            // Properties display
             if (!string.IsNullOrEmpty(CostElement.Properties))
             {
                 lblProperties.Text = CostElement.Properties.Length > 100
@@ -410,7 +388,6 @@ namespace NovaAvaCostManagement
                 lblProperties.ForeColor = Color.Black;
             }
 
-            // Read-only fields
             txtIdReadOnly.Text = CostElement.Id;
             txtCalcIdReadOnly.Text = CostElement.CalculationId.ToString();
             txtElementTypeReadOnly.Text = CostElement.ElementType.ToString();
@@ -422,17 +399,6 @@ namespace NovaAvaCostManagement
         private void BtnGenerateGuid_Click(object sender, EventArgs e)
         {
             txtIdent.Text = Guid.NewGuid().ToString();
-
-            btnGenerateGuid.BackColor = Color.LightGreen;
-            var timer = new System.Windows.Forms.Timer { Interval = 500 };
-            timer.Tick += (s, args) =>
-            {
-                btnGenerateGuid.BackColor = Color.LightBlue;
-                timer.Stop();
-                timer.Dispose();
-            };
-            timer.Start();
-
             MessageBox.Show($"New GUID generated:\n{txtIdent.Text}", "GUID Generated",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -441,7 +407,6 @@ namespace NovaAvaCostManagement
         {
             try
             {
-                // Get IFC type from dropdown
                 string ifcType = cmbIfcType.Text?.Trim() ?? "";
 
                 if (string.IsNullOrEmpty(ifcType))
@@ -452,7 +417,6 @@ namespace NovaAvaCostManagement
                     return;
                 }
 
-                // Generate properties based on selected IFC type
                 var properties = PropertiesSerializer.SerializeProperties(
                     ifcType,
                     CostElement.Material ?? "",
@@ -465,16 +429,6 @@ namespace NovaAvaCostManagement
                     ? properties.Substring(0, 100) + "..."
                     : properties;
                 lblProperties.ForeColor = Color.Green;
-
-                btnGenerateProperties.BackColor = Color.LightGreen;
-                var timer = new System.Windows.Forms.Timer { Interval = 500 };
-                timer.Tick += (s, args) =>
-                {
-                    btnGenerateProperties.BackColor = SystemColors.Control;
-                    timer.Stop();
-                    timer.Dispose();
-                };
-                timer.Start();
 
                 MessageBox.Show("Properties generated successfully!", "Success",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -491,7 +445,6 @@ namespace NovaAvaCostManagement
             if (!ValidateInput())
                 return;
 
-            // Update editable fields only
             CostElement.Name = txtName.Text.Trim();
             CostElement.Children = txtChildren.Text.Trim();
             CostElement.CatalogName = txtCatalogName.Text.Trim();
@@ -507,8 +460,6 @@ namespace NovaAvaCostManagement
                 CostElement.Up = up;
 
             CostElement.Qu = txtQu.Text.Trim();
-
-            // Properties already updated if generated
 
             this.DialogResult = DialogResult.OK;
             this.Close();
