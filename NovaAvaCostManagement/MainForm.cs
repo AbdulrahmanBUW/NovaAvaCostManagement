@@ -1,1586 +1,887 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Data;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using static NovaAvaCostManagement.ProjectManager;
 
 namespace NovaAvaCostManagement
 {
     /// <summary>
-    /// Main form for NOVA AVA Cost Management application
+    /// Simplified main form - Excel-like editing of AVA XML files
     /// </summary>
     public partial class MainForm : Form
     {
-        private ProjectManager projectManager;
-        private ExcelLikeDataGrid dataGridView;
+        private List<CostElement> elements = new List<CostElement>();
+        private List<string> availableIfcTypes = new List<string>();
+        private DataGridView dataGridView;
         private MenuStrip menuStrip;
         private ToolStrip toolStrip;
         private StatusStrip statusStrip;
         private ToolStripStatusLabel statusLabel;
-        private ToolStripProgressBar progressBar;
-        private TextBox searchBox;
-        private ContextMenuStrip contextMenu;
+        private string currentFilePath;
 
         public MainForm()
         {
+            InitializeComponent();
             InitializeCustomComponents();
-            projectManager = new ProjectManager();
-            RefreshDataGrid();
         }
 
-        /// <summary>
-        /// Initialize custom form components
-        /// </summary>
         private void InitializeCustomComponents()
         {
             this.Size = new Size(1400, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.Text = "NOVA AVA Cost Management - Bulk Editor";
+            this.Text = "AVA XML Editor - Simplified";
             this.MinimumSize = new Size(1000, 600);
 
-            // Add controls in correct order (bottom to top for Dock)
-            CreateStatusStrip();      // Dock.Bottom
-            CreateToolStrip();        // Dock.Top
-            CreateMenuStrip();        // Dock.Top (MainMenuStrip)
-            CreateMainContent();      // Dock.Fill
-            CreateContextMenu();      // Not docked
+            CreateStatusStrip();
+            CreateToolStrip();
+            CreateMenuStrip();
+            CreateMainGrid();
         }
 
-        /// <summary>
-        /// Add Elements menu if it doesn't exist
-        /// </summary>
-        private void AddElementsMenu()
-        {
-            var elementsMenu = new ToolStripMenuItem("&Elements");
-            elementsMenu.DropDownItems.Add("&Add Element", null, (s, e) => AddElement());
-            elementsMenu.DropDownItems.Add("&Edit Element", null, (s, e) => EditElement());
-            elementsMenu.DropDownItems.Add("&Delete Element", null, (s, e) => DeleteElement());
-
-            menuStrip.Items.Insert(1, elementsMenu);
-        }
-
-        /// <summary>
-        /// Create context menu for right-click operations
-        /// </summary>
-        private void CreateContextMenu()
-        {
-            contextMenu = new ContextMenuStrip();
-
-            // Excel-like operations first
-            var copyItem = new ToolStripMenuItem("Copy (Ctrl+C)");
-            copyItem.Click += (s, e) => dataGridView?.CopyCells();
-            contextMenu.Items.Add(copyItem);
-
-            var cutItem = new ToolStripMenuItem("Cut (Ctrl+X)");
-            cutItem.Click += (s, e) => dataGridView?.CutCells();
-            contextMenu.Items.Add(cutItem);
-
-            var pasteItem = new ToolStripMenuItem("Paste (Ctrl+V)");
-            pasteItem.Click += (s, e) => dataGridView?.PasteCells();
-            contextMenu.Items.Add(pasteItem);
-
-            var deleteItem = new ToolStripMenuItem("Clear Cells (Del)");
-            deleteItem.Click += (s, e) => dataGridView?.ClearSelectedCells();
-            contextMenu.Items.Add(deleteItem);
-
-            contextMenu.Items.Add(new ToolStripSeparator());
-
-            // Element operations
-            var insertAboveItem = new ToolStripMenuItem("Insert Element Above");
-            insertAboveItem.Click += (s, e) => InsertElementAbove();
-            contextMenu.Items.Add(insertAboveItem);
-
-            var insertBelowItem = new ToolStripMenuItem("Insert Element Below");
-            insertBelowItem.Click += (s, e) => InsertElementBelow();
-            contextMenu.Items.Add(insertBelowItem);
-
-            contextMenu.Items.Add(new ToolStripSeparator());
-
-            var editItem = new ToolStripMenuItem("Edit Element Form");
-            editItem.Click += (s, e) => EditElement();
-            contextMenu.Items.Add(editItem);
-
-            var deleteElementItem = new ToolStripMenuItem("Delete Element");
-            deleteElementItem.Click += (s, e) => DeleteElement();
-            contextMenu.Items.Add(deleteElementItem);
-
-            dataGridView.ContextMenuStrip = contextMenu;
-        }
-
-        /// <summary>
-        /// Sync cell value changes back to the underlying CostElement objects
-        /// </summary>
-        private void DataGridView_CellValueChanged(object sender, DataGridViewCellEventArgs e)
-        {
-            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
-
-            var row = dataGridView.Rows[e.RowIndex];
-            var element = row.DataBoundItem as CostElement;
-            if (element == null) return;
-
-            var column = dataGridView.Columns[e.ColumnIndex];
-            var propertyName = column.DataPropertyName;
-
-            // ONLY recalculate Sum if Qty or Up changed
-            if (propertyName == "Qty" || propertyName == "Up")
-            {
-                element.RecalculateSum();
-
-                // Refresh Sum cell
-                var sumCell = row.Cells["colSum"];
-                if (sumCell != null)
-                    sumCell.Value = element.Sum;
-            }
-        }
-
-        /// <summary>
-        /// Convert cell value to the appropriate type
-        /// </summary>
-        private object ConvertCellValue(object value, Type targetType)
-        {
-            if (value == null || value == DBNull.Value)
-            {
-                if (targetType == typeof(string))
-                    return "";
-                if (targetType == typeof(decimal))
-                    return 0m;
-                if (targetType == typeof(int))
-                    return 0;
-                if (targetType == typeof(bool))
-                    return false;
-                if (targetType == typeof(DateTime))
-                    return DateTime.Now;
-                return null;
-            }
-
-            if (targetType == typeof(decimal))
-            {
-                if (decimal.TryParse(value.ToString(), out decimal result))
-                    return result;
-                return 0m;
-            }
-
-            if (targetType == typeof(int))
-            {
-                if (int.TryParse(value.ToString(), out int result))
-                    return result;
-                return 0;
-            }
-
-            if (targetType == typeof(bool))
-            {
-                if (bool.TryParse(value.ToString(), out bool result))
-                    return result;
-                return false;
-            }
-
-            if (targetType == typeof(DateTime))
-            {
-                if (DateTime.TryParse(value.ToString(), out DateTime result))
-                    return result;
-                return DateTime.Now;
-            }
-
-            return value.ToString();
-        }
-
-        /// <summary>
-        /// Insert new element above the selected row
-        /// </summary>
-        private void InsertElementAbove()
-        {
-            if (dataGridView.CurrentCell == null)
-            {
-                MessageBox.Show("Please select a row to insert above.", "No Selection",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            var currentRow = dataGridView.Rows[dataGridView.CurrentCell.RowIndex];
-            var selectedElement = currentRow.DataBoundItem as CostElement;
-
-            if (selectedElement == null)
-            {
-                MessageBox.Show("Invalid selection.", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            using (var form = new ElementEditForm())
-            {
-                if (form.ShowDialog() == DialogResult.OK)
-                {
-                    int selectedIndex = projectManager.Elements.IndexOf(selectedElement);
-                    projectManager.Elements.Insert(selectedIndex, form.CostElement);
-
-                    RefreshDataGrid();
-                    SetStatus($"Element inserted above row {selectedIndex + 1}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Insert new element below the selected row
-        /// </summary>
-        private void InsertElementBelow()
-        {
-            if (dataGridView.SelectedRows.Count == 0)
-            {
-                MessageBox.Show("Please select a row to insert below.", "No Selection",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            var selectedRow = dataGridView.SelectedRows[0];
-            var selectedElement = selectedRow.Tag as CostElement;
-
-            if (selectedElement == null)
-            {
-                MessageBox.Show("Invalid selection.", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            using (var form = new ElementEditForm())
-            {
-                if (form.ShowDialog() == DialogResult.OK)
-                {
-                    int selectedIndex = projectManager.Elements.IndexOf(selectedElement);
-                    projectManager.Elements.Insert(selectedIndex + 1, form.CostElement);
-
-                    RefreshDataGrid();
-                    SetStatus($"Element inserted below row {selectedIndex + 1}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Create menu strip
-        /// </summary>
         private void CreateMenuStrip()
         {
             menuStrip = new MenuStrip();
-            menuStrip.Dock = DockStyle.Top;
 
-            // 1. FILE MENU
+            // File Menu
             var fileMenu = new ToolStripMenuItem("&File");
-            fileMenu.DropDownItems.Add("&New Project", null, (s, e) => NewProject());
-            fileMenu.DropDownItems.Add("&Open Project...", null, (s, e) => OpenProject());
-            fileMenu.DropDownItems.Add("&Save Project", null, (s, e) => SaveProject());
-            fileMenu.DropDownItems.Add("Save Project &As...", null, (s, e) => SaveProjectAs());
-            fileMenu.DropDownItems.Add(new ToolStripSeparator());
-            fileMenu.DropDownItems.Add("&Import AVA XML...", null, (s, e) => ImportAvaXml());
-            fileMenu.DropDownItems.Add("&Export AVA XML...", null, (s, e) => ExportAvaXml());
-            fileMenu.DropDownItems.Add("Export &GAEB XML...", null, (s, e) => ExportGaebXml());
+            fileMenu.DropDownItems.Add("&Open AVA XML...", null, OpenFile);
+            fileMenu.DropDownItems.Add("&Save AVA XML...", null, SaveFile);
             fileMenu.DropDownItems.Add(new ToolStripSeparator());
             fileMenu.DropDownItems.Add("E&xit", null, (s, e) => this.Close());
             menuStrip.Items.Add(fileMenu);
 
-            // 2. EDIT MENU
+            // Edit Menu
             var editMenu = new ToolStripMenuItem("&Edit");
+            var addItem = new ToolStripMenuItem("&Add Element", null, AddElement);
+            addItem.ShortcutKeys = Keys.Control | Keys.N;
+            editMenu.DropDownItems.Add(addItem);
 
-            var copyItem = new ToolStripMenuItem("&Copy", null, (s, e) => dataGridView?.CopyCells());
-            copyItem.ShortcutKeys = Keys.Control | Keys.C;
-            editMenu.DropDownItems.Add(copyItem);
+            var editItem = new ToolStripMenuItem("&Edit Element", null, EditElement);
+            editItem.ShortcutKeys = Keys.F2;
+            editMenu.DropDownItems.Add(editItem);
 
-            var cutItem = new ToolStripMenuItem("Cu&t", null, (s, e) => dataGridView?.CutCells());
-            cutItem.ShortcutKeys = Keys.Control | Keys.X;
-            editMenu.DropDownItems.Add(cutItem);
-
-            var pasteItem = new ToolStripMenuItem("&Paste", null, (s, e) => dataGridView?.PasteCells());
-            pasteItem.ShortcutKeys = Keys.Control | Keys.V;
-            editMenu.DropDownItems.Add(pasteItem);
-
-            var deleteItem = new ToolStripMenuItem("&Delete", null, (s, e) => dataGridView?.ClearSelectedCells());
+            var deleteItem = new ToolStripMenuItem("&Delete Element", null, DeleteElement);
             deleteItem.ShortcutKeys = Keys.Delete;
             editMenu.DropDownItems.Add(deleteItem);
 
-            editMenu.DropDownItems.Add(new ToolStripSeparator());
-
-            var undoItem = new ToolStripMenuItem("&Undo", null, (s, e) => dataGridView?.Undo());
-            undoItem.ShortcutKeys = Keys.Control | Keys.Z;
-            editMenu.DropDownItems.Add(undoItem);
-
-            var redoItem = new ToolStripMenuItem("&Redo", null, (s, e) => dataGridView?.Redo());
-            redoItem.ShortcutKeys = Keys.Control | Keys.Y;
-            editMenu.DropDownItems.Add(redoItem);
-
-            editMenu.DropDownItems.Add(new ToolStripSeparator());
-
-            var fillDownItem = new ToolStripMenuItem("Fill &Down", null, (s, e) => dataGridView?.FillDown());
-            fillDownItem.ShortcutKeys = Keys.Control | Keys.D;
-            editMenu.DropDownItems.Add(fillDownItem);
-
             menuStrip.Items.Add(editMenu);
 
-            // 3. TEMPLATE MENU
-            var templateMenu = new ToolStripMenuItem("&Template");
-            templateMenu.DropDownItems.Add("Create &Data Entry Template...", null, (s, e) => CreateDataEntryTemplate());
-            templateMenu.DropDownItems.Add("Create &IFC Mapping Template...", null, (s, e) => CreateIFCMappingTemplate());
-            templateMenu.DropDownItems.Add("&Convert Template to Main...", null, (s, e) => ConvertTemplateToMain());
-            menuStrip.Items.Add(templateMenu);
-
-            // 4. TOOLS MENU
-            var toolsMenu = new ToolStripMenuItem("&Tools");
-            toolsMenu.DropDownItems.Add("&Validate Data", null, (s, e) => ValidateData());
-            toolsMenu.DropDownItems.Add("&Quick Diagnostics", null, (s, e) => ShowQuickDiagnostics());
-            toolsMenu.DropDownItems.Add("&Column Mapping Reference", null, (s, e) => ShowColumnMappingReference());
-            toolsMenu.DropDownItems.Add("View &Log Messages", null, (s, e) => ShowLogMessages());
-            toolsMenu.DropDownItems.Add("&Compare with Original XML", null, (s, e) => ShowComparisonWithOriginal());
-            menuStrip.Items.Add(toolsMenu);
-
-            // 5. HELP MENU
+            // Help Menu
             var helpMenu = new ToolStripMenuItem("&Help");
-            helpMenu.DropDownItems.Add("&About", null, (s, e) => ShowAbout());
+            helpMenu.DropDownItems.Add("&About", null, ShowAbout);
             menuStrip.Items.Add(helpMenu);
 
             this.MainMenuStrip = menuStrip;
             this.Controls.Add(menuStrip);
         }
 
-        /// <summary>
-        /// Create toolbar
-        /// </summary>
         private void CreateToolStrip()
         {
             toolStrip = new ToolStrip();
-            toolStrip.Dock = DockStyle.Top;
 
-            toolStrip.Items.Add(new ToolStripButton("New", null, (s, e) => NewProject()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripButton("Open", null, (s, e) => OpenProject()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripButton("Save", null, (s, e) => SaveProject()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
+            toolStrip.Items.Add(new ToolStripButton("Open", null, OpenFile) { DisplayStyle = ToolStripItemDisplayStyle.ImageAndText });
+            toolStrip.Items.Add(new ToolStripButton("Save", null, SaveFile) { DisplayStyle = ToolStripItemDisplayStyle.ImageAndText });
             toolStrip.Items.Add(new ToolStripSeparator());
-            toolStrip.Items.Add(new ToolStripButton("Add Element", null, (s, e) => AddElement()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripButton("Edit Element", null, (s, e) => EditElement()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripButton("Delete Element", null, (s, e) => DeleteElement()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripSeparator());
-            toolStrip.Items.Add(new ToolStripButton("Import AVA", null, (s, e) => ImportAvaXml()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripButton("Export AVA", null, (s, e) => ExportAvaXml()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripSeparator());
-            toolStrip.Items.Add(new ToolStripButton("Validate", null, (s, e) => ValidateData()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripSeparator());
-            toolStrip.Items.Add(new ToolStripButton("Copy (Ctrl+C)", null, (s, e) => dataGridView?.CopyCells()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripButton("Paste (Ctrl+V)", null, (s, e) => dataGridView?.PasteCells()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripButton("Undo (Ctrl+Z)", null, (s, e) => dataGridView?.Undo()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
-            toolStrip.Items.Add(new ToolStripButton("Redo (Ctrl+Y)", null, (s, e) => dataGridView?.Redo()) { DisplayStyle = ToolStripItemDisplayStyle.Text });
+            toolStrip.Items.Add(new ToolStripButton("Add Element", null, AddElement) { DisplayStyle = ToolStripItemDisplayStyle.ImageAndText });
+            toolStrip.Items.Add(new ToolStripButton("Edit Element", null, EditElement) { DisplayStyle = ToolStripItemDisplayStyle.ImageAndText });
+            toolStrip.Items.Add(new ToolStripButton("Delete Element", null, DeleteElement) { DisplayStyle = ToolStripItemDisplayStyle.ImageAndText });
 
             this.Controls.Add(toolStrip);
         }
 
-        /// <summary>
-        /// Create main content area
-        /// </summary>
-        private void CreateMainContent()
-        {
-            int topOffset = menuStrip.Height + toolStrip.Height;
-            var mainPanel = new Panel
-            {
-                Location = new Point(0, topOffset),
-                Size = new Size(this.ClientSize.Width, this.ClientSize.Height - topOffset - statusStrip.Height),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-                Padding = new Padding(5)
-            };
-
-            // Search panel at top
-            var searchPanel = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 40,
-                Padding = new Padding(5)
-            };
-
-            var searchLabel = new Label
-            {
-                Text = "Search:",
-                Location = new Point(5, 10),
-                Size = new Size(50, 20),
-                AutoSize = false
-            };
-            searchPanel.Controls.Add(searchLabel);
-
-            searchBox = new TextBox
-            {
-                Location = new Point(60, 8),
-                Size = new Size(300, 23),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left
-            };
-            searchBox.TextChanged += SearchBox_TextChanged;
-            searchPanel.Controls.Add(searchBox);
-
-            // Add search panel to main panel
-            mainPanel.Controls.Add(searchPanel);
-
-            // Data grid - fill remaining space
-            dataGridView = new ExcelLikeDataGrid
-            {
-                Dock = DockStyle.Fill,
-                AutoGenerateColumns = false,
-                AllowUserToResizeColumns = true,
-                BackgroundColor = Color.White,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
-                ColumnHeadersVisible = true,
-                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
-                ColumnHeadersHeight = 30,
-                ReadOnly = false,
-                EditMode = DataGridViewEditMode.EditOnEnter,
-                RowHeadersWidth = 40,
-                AllowUserToAddRows = false,
-                AllowUserToDeleteRows = false
-            };
-
-            SetupDataGridViewColumns();
-            dataGridView.CellValueChanged += DataGridView_CellValueChanged;
-            dataGridView.DoubleClick += (s, e) => EditElement();
-
-            // Add grid below search panel
-            mainPanel.Controls.Add(dataGridView);
-
-            // Add main panel to form
-            this.Controls.Add(mainPanel);
-        }
-
-        /// <summary>
-        /// Create status strip
-        /// </summary>
         private void CreateStatusStrip()
         {
             statusStrip = new StatusStrip();
-            statusStrip.Dock = DockStyle.Bottom;
-
             statusLabel = new ToolStripStatusLabel("Ready")
             {
                 Spring = true,
                 TextAlign = ContentAlignment.MiddleLeft
             };
             statusStrip.Items.Add(statusLabel);
-
-            progressBar = new ToolStripProgressBar
-            {
-                Visible = false
-            };
-            statusStrip.Items.Add(progressBar);
-
             this.Controls.Add(statusStrip);
         }
 
-        private void RefreshDataGrid()
+        private void CreateMainGrid()
         {
-            try
+            int topOffset = menuStrip.Height + toolStrip.Height;
+
+            dataGridView = new DataGridView
             {
-                var filteredElements = GetFilteredElements();
-
-                var bindingList = new BindingList<CostElement>(filteredElements);
-                dataGridView.DataSource = bindingList;
-
-                foreach (DataGridViewRow row in dataGridView.Rows)
-                {
-                    if (row.DataBoundItem is CostElement element)
-                    {
-                        row.Tag = element;
-
-                        // Apply hierarchy styling
-                        if (element.IsParentNode)
-                        {
-                            // PARENT: Bold, light blue background, no indent
-                            row.DefaultCellStyle.BackColor = Color.FromArgb(220, 235, 255);
-                            row.DefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-                            row.DefaultCellStyle.ForeColor = Color.DarkBlue;
-                        }
-                        else
-                        {
-                            // CHILD: Normal font, white background, slight indent via padding
-                            row.DefaultCellStyle.BackColor = Color.White;
-                            row.DefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
-                            row.DefaultCellStyle.ForeColor = Color.Black;
-                            row.DefaultCellStyle.Padding = new Padding(15, 0, 0, 0);  // Indent children
-                        }
-
-                        // Apply custom colors if specified (only for children)
-                        if (!string.IsNullOrEmpty(element.Color) && !element.IsParentNode)
-                        {
-                            try
-                            {
-                                var color = ColorTranslator.FromHtml(element.Color);
-                                row.DefaultCellStyle.BackColor = Color.FromArgb(50, color);
-                            }
-                            catch { }
-                        }
-                    }
-                }
-                UpdateStatusBar();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error refreshing grid: {ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            // Attach event to sync cell changes back to data model
-            dataGridView.CellValueChanged -= DataGridView_CellValueChanged;
-            dataGridView.CellValueChanged += DataGridView_CellValueChanged;
-        }
-
-        /// <summary>
-        /// Helper method to add an editable text column
-        /// </summary>
-        private void AddEditableColumn(string name, string dataPropertyName, string headerText, int width, bool frozen, bool readOnly)
-        {
-            var column = new DataGridViewTextBoxColumn
-            {
-                Name = name,
-                DataPropertyName = dataPropertyName,
-                HeaderText = headerText,
-                Width = width,
-                Frozen = frozen,
-                ReadOnly = readOnly
-            };
-            dataGridView.Columns.Add(column);
-        }
-
-        /// <summary>
-        /// Setup DataGridView columns
-        /// </summary>
-        private void SetupDataGridViewColumns()
-        {
-            dataGridView.Columns.Clear();
-
-            // CRITICAL: Show Id2 (ident) as the Code column - this is what user sees
-            AddEditableColumn("colCode", "Id2", "Code", 250, true, false);
-
-            // Show other fields exactly as they are
-            AddEditableColumn("colText", "Text", "Text", 300, false, false);
-            AddEditableColumn("colLongText", "LongText", "Long Text", 350, false, false);
-
-            AddNumericColumn("colQty", "Qty", "Quantity", 80, false, false);
-            AddEditableColumn("colQu", "Qu", "Unit", 60, false, false);
-            AddNumericColumn("colUp", "Up", "Unit Price", 100, false, false);
-            AddNumericColumn("colSum", "Sum", "Total", 100, false, false);  // Make editable
-
-            AddEditableColumn("colBimKey", "BimKey", "BIM Key", 150, false, false);
-            AddEditableColumn("colNote", "Note", "Notes", 200, false, false);
-
-            // Info columns
-            AddEditableColumn("colId", "Id", "Element ID", 60, false, true);
-            AddEditableColumn("colCalcId", "CalculationId", "Calc ID", 60, false, true);
-        }
-
-        /// <summary>
-        /// Helper method to add a text column
-        /// </summary>
-        private void AddColumn(string name, string dataPropertyName, string headerText, int width, bool frozen)
-        {
-            var column = new DataGridViewTextBoxColumn
-            {
-                Name = name,
-                DataPropertyName = dataPropertyName,
-                HeaderText = headerText,
-                Width = width,
-                Frozen = frozen,
-                ReadOnly = true
-            };
-            dataGridView.Columns.Add(column);
-        }
-
-        /// <summary>
-        /// Helper method to add a numeric column
-        /// </summary>
-        private void AddNumericColumn(string name, string dataPropertyName, string headerText, int width, bool frozen, bool readOnly, bool bold = false)
-        {
-            var column = new DataGridViewTextBoxColumn
-            {
-                Name = name,
-                DataPropertyName = dataPropertyName,
-                HeaderText = headerText,
-                Width = width,
-                Frozen = frozen,
-                ReadOnly = readOnly,
+                Location = new Point(0, topOffset),
+                Size = new Size(this.ClientSize.Width, this.ClientSize.Height - topOffset - statusStrip.Height),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                AllowUserToAddRows = true,  // Enable Excel-like empty rows
+                AllowUserToDeleteRows = false,
+                AutoGenerateColumns = false,
+                BackgroundColor = Color.White,
+                ColumnHeadersVisible = true,
+                ColumnHeadersHeight = 30,
+                RowHeadersWidth = 50,
+                SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,  // Enable row selection
+                ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText,
+                EditMode = DataGridViewEditMode.EditOnEnter,
+                MultiSelect = true,
                 DefaultCellStyle = new DataGridViewCellStyle
                 {
-                    Alignment = DataGridViewContentAlignment.MiddleRight,
-                    Format = "0.00",
-                    Font = bold ? new Font("Segoe UI", 9F, FontStyle.Bold) : new Font("Segoe UI", 9F)
+                    Font = new Font("Segoe UI", 9F),
+                    SelectionBackColor = Color.FromArgb(51, 153, 255),
+                    SelectionForeColor = Color.White
                 }
             };
-            dataGridView.Columns.Add(column);
+
+            SetupColumns();
+            CreateContextMenu();
+
+            // Excel-like keyboard shortcuts
+            dataGridView.KeyDown += DataGridView_KeyDown;
+            dataGridView.CellValueChanged += DataGridView_CellValueChanged;
+            dataGridView.UserDeletingRow += DataGridView_UserDeletingRow;
+            dataGridView.DoubleClick += (s, e) => EditElement(s, e);
+            dataGridView.CellMouseDown += DataGridView_CellMouseDown;
+
+            this.Controls.Add(dataGridView);
         }
 
-        /// <summary>
-        /// Get filtered elements based on search
-        /// </summary>
-        private List<CostElement> GetFilteredElements()
+        private void CreateContextMenu()
         {
-            if (string.IsNullOrWhiteSpace(searchBox?.Text))
-                return projectManager.Elements;
+            var contextMenu = new ContextMenuStrip();
 
-            var searchTerm = searchBox.Text.ToLower();
-            return projectManager.Elements.Where(e =>
-                e.Name.ToLower().Contains(searchTerm) ||
-                e.Text.ToLower().Contains(searchTerm) ||
-                e.Id2.ToLower().Contains(searchTerm) ||
-                e.Type.ToLower().Contains(searchTerm)
-            ).ToList();
+            contextMenu.Items.Add("Copy (Ctrl+C)", null, (s, e) => CopyCells());
+            contextMenu.Items.Add("Paste (Ctrl+V)", null, (s, e) => PasteCells());
+            contextMenu.Items.Add("Clear (Delete)", null, (s, e) => ClearSelectedCells());
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add("Edit Element (F2)", null, EditElement);
+            contextMenu.Items.Add("View Full Text", null, ViewFullText);
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add("Add Element Above", null, AddElementAbove);
+            contextMenu.Items.Add("Add Element Below", null, AddElementBelow);
+            contextMenu.Items.Add("Delete Element", null, DeleteElement);
+
+            dataGridView.ContextMenuStrip = contextMenu;
         }
 
-        /// <summary>
-        /// Update status bar
-        /// </summary>
-        private void UpdateStatusBar()
+        private void DataGridView_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
         {
-            var totalElements = projectManager.Elements.Count;
-            var filteredCount = GetFilteredElements().Count;
-            var totalValue = projectManager.Elements.Sum(e => e.Sum);
-
-            statusLabel.Text = $"Elements: {filteredCount}/{totalElements} | Total Value: {totalValue:F2}";
-        }
-
-        private void NewProject()
-        {
-            if (ConfirmUnsavedChanges())
+            // Select the cell on right-click for context menu
+            if (e.Button == MouseButtons.Right && e.RowIndex >= 0 && e.ColumnIndex >= 0)
             {
-                projectManager.CreateNewProject();
-                RefreshDataGrid();
-                SetStatus("New project created");
+                dataGridView.CurrentCell = dataGridView[e.ColumnIndex, e.RowIndex];
             }
         }
 
-        private void OpenProject()
+        private void ViewFullText(object sender, EventArgs e)
         {
-            if (!ConfirmUnsavedChanges()) return;
-
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Filter = "Project files (*.xml)|*.xml|All files (*.*)|*.*";
-                dialog.Title = "Open Project";
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        projectManager.LoadProject(dialog.FileName);
-                        RefreshDataGrid();
-                        SetStatus($"Project loaded: {Path.GetFileName(dialog.FileName)}");
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Error loading project: {ex.Message}", "Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-            }
-        }
-
-        private void SaveProject()
-        {
-            if (string.IsNullOrEmpty(projectManager.ProjectFilePath))
-            {
-                SaveProjectAs();
-            }
-            else
-            {
-                try
-                {
-                    projectManager.SaveProject(projectManager.ProjectFilePath);
-                    SetStatus("Project saved");
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error saving project: {ex.Message}", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-        }
-
-        private void SaveProjectAs()
-        {
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = "Project files (*.xml)|*.xml|All files (*.*)|*.*";
-                dialog.Title = "Save Project As";
-                dialog.FileName = "NovaAvaProject.xml";
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        projectManager.SaveProject(dialog.FileName);
-                        SetStatus($"Project saved: {Path.GetFileName(dialog.FileName)}");
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Error saving project: {ex.Message}", "Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-            }
-        }
-
-        private void ImportAvaXml()
-        {
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Filter = "XML files (*.xml)|*.xml|All files (*.*)|*.*";
-                dialog.Title = "Import AVA XML";
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        SetStatus("Importing AVA XML with schema tracking...");
-                        ShowProgress(true);
-
-                        projectManager.ImportAvaXmlWithSchemaTracking(dialog.FileName);
-
-                        RefreshDataGrid();
-                        SetStatus($"AVA XML imported: {Path.GetFileName(dialog.FileName)}");
-
-                        MessageBox.Show(
-                            $"Import successful!\n\n" +
-                            $"Elements imported: {projectManager.Elements.Count}\n" +
-                            $"Original schema captured for validation comparison",
-                            "Import Complete",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Information);
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show(
-                            $"Error importing AVA XML:\n{ex.Message}",
-                            "Import Error",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-                        SetStatus("Import failed");
-                    }
-                    finally
-                    {
-                        ShowProgress(false);
-                    }
-                }
-            }
-        }
-
-        private void ExportAvaXml()
-        {
-            ExportXmlWithValidation(false);
-        }
-
-        private void ExportGaebXml()
-        {
-            ExportXmlWithValidation(true);
-        }
-
-        private void ExportXmlWithValidation(bool useGaebFormat)
-        {
-            SetStatus("Validating data before export...");
-            ShowProgress(true);
-
-            try
-            {
-                var validationResult = projectManager.ValidateForExportEnhanced();
-
-                ShowProgress(false);
-                ShowEnhancedValidationResults(validationResult);
-
-                if (validationResult.HasErrors)
-                {
-                    var forceResult = MessageBox.Show(
-                        $"Validation found {validationResult.Errors.Count} critical error(s).\n\n" +
-                        "Exporting with errors may result in data that cannot be re-imported into AVA NOVA.\n\n" +
-                        "Do you want to force export anyway? (NOT RECOMMENDED)",
-                        "Critical Validation Errors",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Error,
-                        MessageBoxDefaultButton.Button2);
-
-                    if (forceResult != DialogResult.Yes)
-                    {
-                        SetStatus("Export cancelled due to validation errors");
-                        return;
-                    }
-                }
-
-                if (validationResult.HasWarnings && !validationResult.HasErrors)
-                {
-                    var proceedResult = MessageBox.Show(
-                        $"Validation found {validationResult.Warnings.Count} warning(s).\n\n" +
-                        "Warnings indicate potential issues but export should be safe.\n\n" +
-                        "Do you want to proceed with export?",
-                        "Validation Warnings",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning);
-
-                    if (proceedResult != DialogResult.Yes)
-                    {
-                        SetStatus("Export cancelled by user");
-                        return;
-                    }
-                }
-
-                using (var dialog = new SaveFileDialog())
-                {
-                    dialog.Filter = "XML files (*.xml)|*.xml|All files (*.*)|*.*";
-                    dialog.Title = useGaebFormat ? "Export GAEB XML" : "Export AVA XML";
-                    dialog.FileName = $"NovaAva_Export_{DateTime.Now:yyyyMMdd_HHmmss}.xml";
-
-                    if (dialog.ShowDialog() == DialogResult.OK)
-                    {
-                        SetStatus("Exporting XML...");
-                        ShowProgress(true);
-
-                        projectManager.ExportAvaXmlSafe(dialog.FileName, useGaebFormat, forceExport: true);
-
-                        SetStatus($"XML exported: {Path.GetFileName(dialog.FileName)}");
-
-                        var message = $"Export completed successfully!\n\n" +
-                                     $"File: {Path.GetFileName(dialog.FileName)}\n" +
-                                     $"Elements: {projectManager.Elements.Count}";
-
-                        if (validationResult.HasWarnings)
-                        {
-                            message += $"\n\nNote: Exported with {validationResult.Warnings.Count} warning(s). " +
-                                      "Review validation report for details.";
-                        }
-
-                        var showFileResult = MessageBox.Show(
-                            message + "\n\nWould you like to open the exported file?",
-                            "Export Complete",
-                            MessageBoxButtons.YesNo,
-                            MessageBoxIcon.Information);
-
-                        if (showFileResult == DialogResult.Yes)
-                        {
-                            try
-                            {
-                                System.Diagnostics.Process.Start(dialog.FileName);
-                            }
-                            catch
-                            {
-                                MessageBox.Show($"Could not open file: {dialog.FileName}", "Error",
-                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error during export: {ex.Message}", "Export Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                SetStatus("Export failed");
-            }
-            finally
-            {
-                ShowProgress(false);
-            }
-        }
-
-        private void ShowComparisonWithOriginal()
-        {
-            if (!EnhancedValidator.OriginalXmlSchema.Any())
-            {
-                MessageBox.Show(
-                    "No original XML data available for comparison.\n\n" +
-                    "Import an XML file first to enable schema comparison.",
-                    "No Original Data",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+            if (dataGridView.CurrentCell == null || dataGridView.CurrentCell.RowIndex >= elements.Count)
                 return;
-            }
 
-            var comparison = projectManager.CompareWithOriginal();
+            var element = elements[dataGridView.CurrentCell.RowIndex];
+            var columnName = dataGridView.CurrentCell.OwningColumn.DataPropertyName;
+
+            string title = "View Full Content";
+            string content = "";
+
+            switch (columnName)
+            {
+                case "Text":
+                    title = "Full Text";
+                    content = element.Text;
+                    break;
+                case "LongText":
+                    title = "Full Long Text";
+                    content = element.LongText;
+                    break;
+                case "Properties":
+                    title = "Full Properties";
+                    content = element.Properties;
+                    break;
+                default:
+                    content = dataGridView.CurrentCell.Value?.ToString() ?? "";
+                    break;
+            }
 
             using (var form = new Form())
             {
-                form.Text = "Comparison with Original XML";
+                form.Text = title;
                 form.Size = new Size(700, 500);
                 form.StartPosition = FormStartPosition.CenterParent;
-                form.FormBorderStyle = FormBorderStyle.Sizable;
-                form.MinimumSize = new Size(500, 400);
 
-                var textBox = new TextBox
-                {
-                    Dock = DockStyle.Fill,
-                    Multiline = true,
-                    ReadOnly = true,
-                    ScrollBars = ScrollBars.Both,
-                    Font = new Font("Consolas", 9),
-                    Text = comparison.GetSummary()
-                };
-
-                form.Controls.Add(textBox);
-
-                var buttonPanel = new Panel
-                {
-                    Dock = DockStyle.Bottom,
-                    Height = 50
-                };
-
-                var btnClose = new Button
-                {
-                    Text = "Close",
-                    Location = new Point(form.Width - 100, 10),
-                    Size = new Size(80, 30),
-                    Anchor = AnchorStyles.Right
-                };
-                btnClose.Click += (s, e) => form.Close();
-                buttonPanel.Controls.Add(btnClose);
-
-                if (comparison.HasDifferences)
-                {
-                    var btnExport = new Button
-                    {
-                        Text = "Export Report",
-                        Location = new Point(20, 10),
-                        Size = new Size(120, 30)
-                    };
-                    btnExport.Click += (s, e) => ExportComparisonReport(comparison);
-                    buttonPanel.Controls.Add(btnExport);
-                }
-
-                form.Controls.Add(buttonPanel);
-                form.ShowDialog();
-            }
-        }
-
-        private void ExportComparisonReport(ComparisonResult comparison)
-        {
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
-                dialog.Title = "Export Comparison Report";
-                dialog.FileName = $"Comparison_Report_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        File.WriteAllText(dialog.FileName, comparison.GetSummary());
-                        MessageBox.Show("Comparison report exported successfully!", "Export Complete",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Error exporting report: {ex.Message}", "Export Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-            }
-        }
-
-        private void CreateDataEntryTemplate()
-        {
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
-                dialog.Title = "Create Data Entry Template";
-                dialog.FileName = "DataEntryTemplate.csv";
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        TemplateManager.CreateDataEntryTemplate(dialog.FileName);
-                        SetStatus($"Template created: {Path.GetFileName(dialog.FileName)}");
-
-                        var result = MessageBox.Show("Template created successfully. Would you like to open it?",
-                            "Template Created", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
-
-                        if (result == DialogResult.Yes)
-                        {
-                            try
-                            {
-                                System.Diagnostics.Process.Start(dialog.FileName);
-                            }
-                            catch
-                            {
-                                MessageBox.Show($"Could not open file: {dialog.FileName}", "Error",
-                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Error creating template: {ex.Message}", "Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-            }
-        }
-
-        private void CreateIFCMappingTemplate()
-        {
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
-                dialog.Title = "Create IFC Mapping Template";
-                dialog.FileName = "IFCMappingTemplate.csv";
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        TemplateManager.CreateIFCMappingTemplate(dialog.FileName);
-                        SetStatus($"IFC mapping template created: {Path.GetFileName(dialog.FileName)}");
-
-                        var result = MessageBox.Show("IFC mapping template created successfully. Would you like to open it?",
-                            "Template Created", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
-
-                        if (result == DialogResult.Yes)
-                        {
-                            try
-                            {
-                                System.Diagnostics.Process.Start(dialog.FileName);
-                            }
-                            catch
-                            {
-                                MessageBox.Show($"Could not open file: {dialog.FileName}", "Error",
-                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Error creating IFC mapping template: {ex.Message}", "Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-            }
-        }
-
-        private void ConvertTemplateToMain()
-        {
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
-                dialog.Title = "Convert Template to Main Sheet";
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        SetStatus("Converting template...");
-                        ShowProgress(true);
-
-                        var convertedElements = TemplateManager.ConvertTemplateToMainSheet(dialog.FileName);
-
-                        if (convertedElements.Count > 0)
-                        {
-                            var result = MessageBox.Show(
-                                $"Converted {convertedElements.Count} elements from template.\n\nChoose action:\nYes = Append to existing\nNo = Replace existing\nCancel = Cancel",
-                                "Template Conversion",
-                                MessageBoxButtons.YesNoCancel,
-                                MessageBoxIcon.Question);
-
-                            if (result == DialogResult.Yes)
-                            {
-                                projectManager.Elements.AddRange(convertedElements);
-                                RefreshDataGrid();
-                                SetStatus($"Template converted and appended: {convertedElements.Count} elements");
-                            }
-                            else if (result == DialogResult.No)
-                            {
-                                projectManager.Elements.Clear();
-                                projectManager.Elements.AddRange(convertedElements);
-                                RefreshDataGrid();
-                                SetStatus($"Template converted and replaced: {convertedElements.Count} elements");
-                            }
-                        }
-                        else
-                        {
-                            MessageBox.Show("No valid elements found in template.", "Template Conversion",
-                                MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Error converting template: {ex.Message}", "Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        SetStatus("Template conversion failed");
-                    }
-                    finally
-                    {
-                        ShowProgress(false);
-                    }
-                }
-            }
-        }
-
-        private void ValidateData()
-        {
-            try
-            {
-                SetStatus("Running enhanced validation...");
-                ShowProgress(true);
-
-                var result = projectManager.ValidateForExportEnhanced();
-                ShowEnhancedValidationResults(result);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error during validation: {ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            finally
-            {
-                ShowProgress(false);
-                SetStatus("Validation completed");
-            }
-        }
-
-        private void ShowEnhancedValidationResults(ValidationResult result)
-        {
-            using (var form = new Form())
-            {
-                form.Text = "Enhanced Validation Results";
-                form.Size = new Size(800, 600);
-                form.StartPosition = FormStartPosition.CenterParent;
-                form.FormBorderStyle = FormBorderStyle.Sizable;
-                form.MinimumSize = new Size(600, 400);
-
-                var tabControl = new TabControl
-                {
-                    Dock = DockStyle.Fill
-                };
-
-                var summaryTab = new TabPage("Summary");
-                var summaryPanel = CreateSummaryPanel(result);
-                summaryTab.Controls.Add(summaryPanel);
-                tabControl.TabPages.Add(summaryTab);
-
-                var reportTab = new TabPage("Detailed Report");
-                var reportText = new TextBox
+                var txtContent = new TextBox
                 {
                     Dock = DockStyle.Fill,
                     Multiline = true,
                     ReadOnly = true,
                     ScrollBars = ScrollBars.Both,
                     Font = new Font("Consolas", 9F),
-                    Text = EnhancedValidator.GenerateValidationReport(result)
-                };
-                reportTab.Controls.Add(reportText);
-                tabControl.TabPages.Add(reportTab);
-
-                if (EnhancedValidator.OriginalXmlSchema.Any())
-                {
-                    var comparisonTab = new TabPage("Original Comparison");
-                    var comparisonText = new TextBox
-                    {
-                        Dock = DockStyle.Fill,
-                        Multiline = true,
-                        ReadOnly = true,
-                        ScrollBars = ScrollBars.Both,
-                        Font = new Font("Consolas", 9F),
-                        Text = projectManager.CompareWithOriginal().GetSummary()
-                    };
-                    comparisonTab.Controls.Add(comparisonText);
-                    tabControl.TabPages.Add(comparisonTab);
-                }
-
-                form.Controls.Add(tabControl);
-
-                var buttonPanel = new Panel
-                {
-                    Dock = DockStyle.Bottom,
-                    Height = 50
+                    Text = content,
+                    WordWrap = true
                 };
 
-                var btnClose = new Button
-                {
-                    Text = "Close",
-                    Location = new Point(form.Width - 100, 10),
-                    Size = new Size(80, 30),
-                    Anchor = AnchorStyles.Right | AnchorStyles.Top
-                };
-                btnClose.Click += (s, e) => form.Close();
-                buttonPanel.Controls.Add(btnClose);
-
-                if (result.HasErrors)
-                {
-                    var btnExport = new Button
-                    {
-                        Text = "Export Anyway (Risky)",
-                        Location = new Point(form.Width - 200, 10),
-                        Size = new Size(150, 30),
-                        Anchor = AnchorStyles.Right | AnchorStyles.Top,
-                        BackColor = Color.Orange
-                    };
-                    btnExport.Click += (s, e) =>
-                    {
-                        var confirmResult = MessageBox.Show(
-                            "WARNING: Exporting with validation errors may result in data that cannot be imported back into AVA NOVA.\n\n" +
-                            "Are you absolutely sure you want to export anyway?",
-                            "Risky Export",
-                            MessageBoxButtons.YesNo,
-                            MessageBoxIcon.Warning);
-
-                        if (confirmResult == DialogResult.Yes)
-                        {
-                            form.DialogResult = DialogResult.Ignore;
-                            form.Close();
-                        }
-                    };
-                    buttonPanel.Controls.Add(btnExport);
-                }
-                else
-                {
-                    var btnProceed = new Button
-                    {
-                        Text = "Proceed to Export",
-                        Location = new Point(form.Width - 200, 10),
-                        Size = new Size(130, 30),
-                        Anchor = AnchorStyles.Right | AnchorStyles.Top,
-                        BackColor = Color.LightGreen
-                    };
-                    btnProceed.Click += (s, e) =>
-                    {
-                        form.DialogResult = DialogResult.OK;
-                        form.Close();
-                    };
-                    buttonPanel.Controls.Add(btnProceed);
-                }
-
-                form.Controls.Add(buttonPanel);
+                form.Controls.Add(txtContent);
                 form.ShowDialog();
             }
         }
 
-        private Panel CreateSummaryPanel(ValidationResult result)
+        private void AddElementAbove(object sender, EventArgs e)
         {
-            var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20) };
-
-            int yPos = 20;
-
-            var statusLabel = new Label
+            if (dataGridView.CurrentCell == null || dataGridView.CurrentCell.RowIndex >= elements.Count)
             {
-                Location = new Point(20, yPos),
-                Size = new Size(700, 60),
-                Font = new Font("Microsoft Sans Serif", 14F, FontStyle.Bold),
-                ForeColor = result.IsValid ? Color.Green : Color.Red,
-                Text = result.IsValid ?
-                    "✓ VALIDATION PASSED - Ready for Export" :
-                    "✗ VALIDATION FAILED - Cannot Export"
-            };
-            panel.Controls.Add(statusLabel);
-            yPos += 70;
-
-            var statsGroup = new GroupBox
-            {
-                Location = new Point(20, yPos),
-                Size = new Size(700, 120),
-                Text = "Validation Statistics"
-            };
-
-            var statsText = new Label
-            {
-                Location = new Point(10, 25),
-                Size = new Size(680, 90),
-                Font = new Font("Microsoft Sans Serif", 10F),
-                Text = $"Total Elements Validated: {projectManager.Elements.Count}\n" +
-                       $"Critical Errors: {result.Errors.Count}\n" +
-                       $"Warnings: {result.Warnings.Count}\n" +
-                       $"Schema Comparison: {(EnhancedValidator.OriginalXmlSchema.Any() ? "Available" : "Not Available")}"
-            };
-            statsGroup.Controls.Add(statsText);
-            panel.Controls.Add(statsGroup);
-            yPos += 130;
-
-            if (result.HasErrors)
-            {
-                var errorGroup = new GroupBox
-                {
-                    Location = new Point(20, yPos),
-                    Size = new Size(700, 150),
-                    Text = "Critical Errors (Must Fix)",
-                    ForeColor = Color.Red
-                };
-
-                var errorList = new ListBox
-                {
-                    Location = new Point(10, 25),
-                    Size = new Size(680, 115),
-                    Font = new Font("Consolas", 9F)
-                };
-
-                foreach (var error in result.Errors.Take(10))
-                {
-                    errorList.Items.Add(error);
-                }
-
-                if (result.Errors.Count > 10)
-                {
-                    errorList.Items.Add($"... and {result.Errors.Count - 10} more errors");
-                }
-
-                errorGroup.Controls.Add(errorList);
-                panel.Controls.Add(errorGroup);
-                yPos += 160;
+                AddElement(sender, e);
+                return;
             }
 
-            if (result.HasWarnings)
-            {
-                var warningGroup = new GroupBox
-                {
-                    Location = new Point(20, yPos),
-                    Size = new Size(700, 150),
-                    Text = "Warnings (Should Review)",
-                    ForeColor = Color.Orange
-                };
+            int insertIndex = dataGridView.CurrentCell.RowIndex;
+            int nextId = GetNextAvailableId();
 
-                var warningList = new ListBox
-                {
-                    Location = new Point(10, 25),
-                    Size = new Size(680, 115),
-                    Font = new Font("Consolas", 9F)
-                };
-
-                foreach (var warning in result.Warnings.Take(10))
-                {
-                    warningList.Items.Add(warning);
-                }
-
-                if (result.Warnings.Count > 10)
-                {
-                    warningList.Items.Add($"... and {result.Warnings.Count - 10} more warnings");
-                }
-
-                warningGroup.Controls.Add(warningList);
-                panel.Controls.Add(warningGroup);
-            }
-
-            return panel;
-        }
-
-        private void ShowQuickDiagnostics()
-        {
-            var diagnostics = projectManager.GenerateQuickDiagnostics();
-
-            using (var form = new Form())
-            {
-                form.Text = "Quick Diagnostics";
-                form.Size = new Size(600, 500);
-                form.StartPosition = FormStartPosition.CenterParent;
-                form.FormBorderStyle = FormBorderStyle.Sizable;
-                form.MinimumSize = new Size(400, 300);
-
-                var textBox = new TextBox
-                {
-                    Dock = DockStyle.Fill,
-                    Multiline = true,
-                    ReadOnly = true,
-                    ScrollBars = ScrollBars.Both,
-                    Font = new Font("Consolas", 9),
-                    Text = diagnostics,
-                    WordWrap = false
-                };
-
-                form.Controls.Add(textBox);
-                form.ShowDialog();
-            }
-        }
-
-        private void ShowColumnMappingReference()
-        {
-            var mappingInfo = @"=== NOVA AVA Column Mapping Reference ===
-
-Core Fields (Always Required):
-- version (2): Fixed version number
-- id: Sequential or GUID identifier
-- name: Element name/description
-- text: Short description (max 255 chars)
-- longtext: Detailed description (max 2000 chars)
-- qty: Quantity value
-- qu: Unit of measurement
-- up: Unit price
-- sum: Total value (qty * up)
-- properties: PHP-serialized properties string
-
-Auto-Generated Fields:
-- id2, id5, id6, ident: GUID identifiers
-- created, created3: Timestamps
-- criteria: Default criteria string
-
-IFC-Specific Fields:
-- ifc_type: IFC element type (IFCPIPESEGMENT, IFCWALL, etc.)
-- material: Material specification
-- dimension: Dimensional information
-- segment_type: Type/category specification
-
-Optional Fields:
-- bimkey: BIM reference key
-- color: Color coding (hex format)
-- note: Additional notes
-- type: Element type/category
-- label: Display label
-
-All 69+ fields are supported for full NOVA AVA compatibility.
-See CostElement class for complete field listing.";
-
-            using (var form = new Form())
-            {
-                form.Text = "Column Mapping Reference";
-                form.Size = new Size(600, 500);
-                form.StartPosition = FormStartPosition.CenterParent;
-
-                var textBox = new TextBox
-                {
-                    Dock = DockStyle.Fill,
-                    Multiline = true,
-                    ReadOnly = true,
-                    ScrollBars = ScrollBars.Vertical,
-                    Font = new Font("Consolas", 9),
-                    Text = mappingInfo
-                };
-
-                form.Controls.Add(textBox);
-                form.ShowDialog();
-            }
-        }
-
-        private void ShowLogMessages()
-        {
-            using (var form = new Form())
-            {
-                form.Text = "Log Messages";
-                form.Size = new Size(700, 400);
-                form.StartPosition = FormStartPosition.CenterParent;
-
-                var textBox = new TextBox
-                {
-                    Dock = DockStyle.Fill,
-                    Multiline = true,
-                    ReadOnly = true,
-                    ScrollBars = ScrollBars.Vertical,
-                    Font = new Font("Consolas", 9),
-                    Text = string.Join(Environment.NewLine, projectManager.LogMessages)
-                };
-
-                form.Controls.Add(textBox);
-                form.ShowDialog();
-            }
-        }
-
-        private void ShowAbout()
-        {
-            MessageBox.Show(
-                "NOVA AVA Cost Management System\n\n" +
-                "Version 1.0\n" +
-                "Complete cost element management with AVA/NOVA XML compatibility\n\n" +
-                "Features:\n" +
-                "- Full 69+ column support\n" +
-                "- PHP-serialized properties generation\n" +
-                "- Template-based workflows\n" +
-                "- Import/Export AVA and GAEB XML\n" +
-                "- Enhanced validation and diagnostics\n\n" +
-                "Built with C# WinForms",
-                "About NOVA AVA Cost Management",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-        }
-
-        private void AddElement()
-        {
-            using (var form = new ElementEditForm())
+            using (var form = new ElementEditForm(null, nextId))
             {
                 if (form.ShowDialog() == DialogResult.OK)
                 {
-                    projectManager.Elements.Add(form.CostElement);
-                    RefreshDataGrid();
+                    elements.Insert(insertIndex, form.CostElement);
+                    RefreshGrid();
+                    SetStatus($"Element inserted at position {insertIndex + 1}");
+                }
+            }
+        }
+
+        private void AddElementBelow(object sender, EventArgs e)
+        {
+            if (dataGridView.CurrentCell == null || dataGridView.CurrentCell.RowIndex >= elements.Count)
+            {
+                AddElement(sender, e);
+                return;
+            }
+
+            int insertIndex = dataGridView.CurrentCell.RowIndex + 1;
+            int nextId = GetNextAvailableId();
+
+            using (var form = new ElementEditForm(null, nextId))
+            {
+                if (form.ShowDialog() == DialogResult.OK)
+                {
+                    elements.Insert(insertIndex, form.CostElement);
+                    RefreshGrid();
+                    SetStatus($"Element inserted at position {insertIndex + 1}");
+                }
+            }
+        }
+
+        private void SetupColumns()
+        {
+            dataGridView.Columns.Clear();
+
+            // ID - read-only, frozen for easy reference
+            AddColumn("colId", "Id", "ID", 60, true, true);
+
+            // Editable fields - arranged in logical order
+            AddColumn("colName", "Name", "Name", 250, false, false);
+            AddColumn("colCatalogName", "CatalogName", "Catalog Name", 180, false, false);
+            AddColumn("colCatalogType", "CatalogType", "Catalog Type", 150, false, false);
+            AddColumn("colText", "Text", "Text", 200, false, false);
+            AddColumn("colQtyResult", "QtyResult", "Qty", 80, false, false);
+            AddColumn("colUp", "Up", "Unit Price", 100, false, false);
+            AddColumn("colUpResult", "UpResult", "Total Price", 100, false, false);
+            AddColumn("colQu", "Qu", "Unit", 60, false, false);
+            AddColumn("colChildren", "Children", "Children", 80, false, false);
+            AddColumn("colIdent", "Ident", "Ident (GUID)", 280, false, false);
+
+            // Properties column
+            var colProperties = new DataGridViewTextBoxColumn
+            {
+                Name = "colProperties",
+                DataPropertyName = "Properties",
+                HeaderText = "Properties (Preview)",
+                Width = 200,
+                ReadOnly = false,
+                DefaultCellStyle = new DataGridViewCellStyle
+                {
+                    WrapMode = DataGridViewTriState.False,
+                    Font = new Font("Consolas", 8F)
+                }
+            };
+            dataGridView.Columns.Add(colProperties);
+
+            // Long Text - make wider and use custom formatting
+            var colLongText = new DataGridViewTextBoxColumn
+            {
+                Name = "colLongText",
+                DataPropertyName = "LongText",
+                HeaderText = "Long Text (Preview)",
+                Width = 300,
+                ReadOnly = false,
+                DefaultCellStyle = new DataGridViewCellStyle
+                {
+                    WrapMode = DataGridViewTriState.False,
+                    Font = new Font("Segoe UI", 8F)
+                }
+            };
+            dataGridView.Columns.Add(colLongText);
+
+            // Format cells to strip HTML for display and show property previews
+            dataGridView.CellFormatting += DataGridView_CellFormatting;
+        }
+
+        private void AddColumn(string name, string dataPropertyName, string headerText,
+            int width, bool readOnly, bool frozen)
+        {
+            var column = new DataGridViewTextBoxColumn
+            {
+                Name = name,
+                DataPropertyName = dataPropertyName,
+                HeaderText = headerText,
+                Width = width,
+                ReadOnly = readOnly,
+                Frozen = frozen
+            };
+
+            if (readOnly)
+            {
+                column.DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+            }
+
+            dataGridView.Columns.Add(column);
+        }
+
+        private void DataGridView_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (e.Value == null) return;
+
+            var columnName = dataGridView.Columns[e.ColumnIndex].Name;
+
+            // Strip HTML from Text and LongText columns for display
+            if (columnName == "colText" || columnName == "colLongText")
+            {
+                string text = e.Value.ToString();
+
+                // Remove HTML tags for display
+                if (text.Contains("<") && text.Contains(">"))
+                {
+                    // Simple HTML strip - remove tags but keep content
+                    text = System.Text.RegularExpressions.Regex.Replace(text, @"<[^>]+>", "");
+                    // Clean up extra whitespace
+                    text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+
+                    // For LongText, show preview only
+                    if (columnName == "colLongText" && text.Length > 100)
+                    {
+                        text = text.Substring(0, 100) + "...";
+                    }
+
+                    e.Value = text;
+                    e.FormattingApplied = true;
+                }
+            }
+            // Show preview of Properties
+            else if (columnName == "colProperties")
+            {
+                string props = e.Value.ToString();
+                if (props.Length > 50)
+                {
+                    e.Value = props.Substring(0, 50) + "...";
+                    e.FormattingApplied = true;
+                }
+            }
+        }
+
+        private void AddColumn(string name, string dataPropertyName, string headerText, int width, bool readOnly)
+        {
+            AddColumn(name, dataPropertyName, headerText, width, readOnly, false);
+        }
+
+        private void DataGridView_KeyDown(object sender, KeyEventArgs e)
+        {
+            // Ctrl+C - Copy
+            if (e.Control && e.KeyCode == Keys.C)
+            {
+                CopyCells();
+                e.Handled = true;
+            }
+            // Ctrl+V - Paste
+            else if (e.Control && e.KeyCode == Keys.V)
+            {
+                PasteCells();
+                e.Handled = true;
+            }
+            // Delete - Clear cells
+            else if (e.KeyCode == Keys.Delete && !dataGridView.IsCurrentCellInEditMode)
+            {
+                ClearSelectedCells();
+                e.Handled = true;
+            }
+            // Ctrl+N - Add new element
+            else if (e.Control && e.KeyCode == Keys.N)
+            {
+                AddElement(sender, e);
+                e.Handled = true;
+            }
+            // F2 - Edit element
+            else if (e.KeyCode == Keys.F2 && !dataGridView.IsCurrentCellInEditMode)
+            {
+                EditElement(sender, e);
+                e.Handled = true;
+            }
+        }
+
+        private void CopyCells()
+        {
+            if (dataGridView.SelectedRows.Count == 0 && dataGridView.GetCellCount(DataGridViewElementStates.Selected) == 0)
+                return;
+
+            try
+            {
+                // Check if entire rows are selected
+                if (dataGridView.SelectedRows.Count > 0)
+                {
+                    // Copy entire rows
+                    var selectedElements = new List<CostElement>();
+                    foreach (DataGridViewRow row in dataGridView.SelectedRows)
+                    {
+                        if (row.Index < elements.Count)
+                        {
+                            selectedElements.Add(elements[row.Index]);
+                        }
+                    }
+
+                    // Serialize to clipboard in tab-delimited format
+                    var clipboardText = new System.Text.StringBuilder();
+
+                    foreach (var element in selectedElements.OrderBy(e => elements.IndexOf(e)))
+                    {
+                        clipboardText.AppendLine(string.Join("\t",
+                            element.Id,
+                            element.Name,
+                            element.CatalogName,
+                            element.CatalogType,
+                            element.Text,
+                            element.QtyResult,
+                            element.Up,
+                            element.UpResult,
+                            element.Qu,
+                            element.Children,
+                            element.Ident,
+                            element.Properties,
+                            element.LongText
+                        ));
+                    }
+
+                    Clipboard.SetText(clipboardText.ToString());
+                    SetStatus($"Copied {selectedElements.Count} row(s)");
+                }
+                else
+                {
+                    // Copy selected cells only
+                    Clipboard.SetDataObject(dataGridView.GetClipboardContent());
+                    SetStatus("Copied cells to clipboard");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Copy error: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void PasteCells()
+        {
+            if (!Clipboard.ContainsText())
+                return;
+
+            try
+            {
+                string clipboardText = Clipboard.GetText();
+                string[] lines = clipboardText.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+
+                if (lines.Length == 0) return;
+
+                // Determine starting position
+                int startRow = dataGridView.CurrentCell?.RowIndex ?? elements.Count;
+
+                // Check if we're pasting full rows (13 columns) or partial data
+                string[] firstLine = lines[0].Split('\t');
+                bool isPastingFullRows = firstLine.Length == 13; // All editable columns
+
+                if (isPastingFullRows)
+                {
+                    // Paste entire rows
+                    int pastedCount = 0;
+                    foreach (var line in lines)
+                    {
+                        string[] cells = line.Split('\t');
+                        if (cells.Length < 13) continue;
+
+                        var newElement = new CostElement
+                        {
+                            Id = cells[0],
+                            Name = cells[1],
+                            CatalogName = cells[2],
+                            CatalogType = cells[3],
+                            Text = cells[4],
+                            QtyResult = decimal.TryParse(cells[5], out decimal qty) ? qty : 0,
+                            Up = decimal.TryParse(cells[6], out decimal up) ? up : 0,
+                            UpResult = decimal.TryParse(cells[7], out decimal upResult) ? upResult : 0,
+                            Qu = cells[8],
+                            Children = cells[9],
+                            Ident = cells[10],
+                            Properties = cells[11],
+                            LongText = cells[12]
+                        };
+
+                        if (startRow + pastedCount < elements.Count)
+                        {
+                            elements[startRow + pastedCount] = newElement;
+                        }
+                        else
+                        {
+                            elements.Add(newElement);
+                        }
+                        pastedCount++;
+                    }
+
+                    RefreshGrid();
+                    SetStatus($"Pasted {pastedCount} row(s)");
+                }
+                else
+                {
+                    // Paste cells (existing behavior)
+                    int startCol = dataGridView.CurrentCell?.ColumnIndex ?? 0;
+
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        if (string.IsNullOrEmpty(lines[i])) continue;
+
+                        string[] cells = lines[i].Split('\t');
+                        int targetRow = startRow + i;
+
+                        // Add new rows if needed
+                        while (targetRow >= elements.Count)
+                        {
+                            AddEmptyElement();
+                        }
+
+                        for (int j = 0; j < cells.Length; j++)
+                        {
+                            int targetCol = startCol + j;
+                            if (targetCol >= dataGridView.Columns.Count) continue;
+
+                            var column = dataGridView.Columns[targetCol];
+                            if (column.ReadOnly) continue;
+
+                            // Update element directly
+                            var element = elements[targetRow];
+                            UpdateElementField(element, column.DataPropertyName, cells[j]);
+                        }
+                    }
+
+                    RefreshGrid();
+                    SetStatus("Pasted cells");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Paste error: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void UpdateElementField(CostElement element, string fieldName, string value)
+        {
+            switch (fieldName)
+            {
+                case "Name":
+                    element.Name = value;
+                    break;
+                case "CatalogName":
+                    element.CatalogName = value;
+                    break;
+                case "CatalogType":
+                    element.CatalogType = value;
+                    break;
+                case "Text":
+                    element.Text = value;
+                    break;
+                case "QtyResult":
+                    element.QtyResult = decimal.TryParse(value, out decimal qty) ? qty : 0;
+                    break;
+                case "Up":
+                    element.Up = decimal.TryParse(value, out decimal up) ? up : 0;
+                    break;
+                case "UpResult":
+                    element.UpResult = decimal.TryParse(value, out decimal upResult) ? upResult : 0;
+                    break;
+                case "Qu":
+                    element.Qu = value;
+                    break;
+                case "Children":
+                    element.Children = value;
+                    break;
+                case "Ident":
+                    element.Ident = value;
+                    break;
+                case "Properties":
+                    element.Properties = value;
+                    break;
+                case "LongText":
+                    element.LongText = value;
+                    break;
+            }
+        }
+
+        private void ClearSelectedCells()
+        {
+            foreach (DataGridViewCell cell in dataGridView.SelectedCells)
+            {
+                if (!cell.ReadOnly && !dataGridView.Columns[cell.ColumnIndex].ReadOnly)
+                {
+                    cell.Value = null;
+                }
+            }
+            SetStatus("Cells cleared");
+        }
+
+        private void DataGridView_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            if (e.RowIndex >= elements.Count) return;
+
+            var row = dataGridView.Rows[e.RowIndex];
+            var element = elements[e.RowIndex];
+            var column = dataGridView.Columns[e.ColumnIndex];
+
+            // Update element based on which column changed
+            switch (column.DataPropertyName)
+            {
+                case "Name":
+                    element.Name = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "Children":
+                    element.Children = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "CatalogName":
+                    element.CatalogName = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "Ident":
+                    element.Ident = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "CatalogType":
+                    element.CatalogType = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "Text":
+                    element.Text = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "LongText":
+                    element.LongText = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "QtyResult":
+                    if (decimal.TryParse(row.Cells[e.ColumnIndex].Value?.ToString(), out decimal qty))
+                        element.QtyResult = qty;
+                    break;
+                case "Qu":
+                    element.Qu = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "Up":
+                    if (decimal.TryParse(row.Cells[e.ColumnIndex].Value?.ToString(), out decimal up))
+                        element.Up = up;
+                    break;
+                case "Properties":
+                    element.Properties = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+            }
+        }
+
+        private void DataGridView_UserDeletingRow(object sender, DataGridViewRowCancelEventArgs e)
+        {
+            // Prevent accidental deletion
+            var result = MessageBox.Show("Delete this element?", "Confirm Delete",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (result != DialogResult.Yes)
+            {
+                e.Cancel = true;
+            }
+        }
+
+        private void RefreshGrid()
+        {
+            var bindingList = new BindingList<CostElement>(elements);
+            dataGridView.DataSource = bindingList;
+            UpdateStatus();
+        }
+
+        private void UpdateStatus()
+        {
+            statusLabel.Text = $"Elements: {elements.Count} | File: {(string.IsNullOrEmpty(currentFilePath) ? "None" : Path.GetFileName(currentFilePath))}";
+        }
+
+        private int GetNextAvailableId()
+        {
+            if (elements.Count == 0) return 1;
+
+            int maxId = elements
+                .Select(e => int.TryParse(e.Id, out int id) ? id : 0)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            return maxId + 1;
+        }
+
+        private void AddEmptyElement()
+        {
+            var newElement = new CostElement
+            {
+                Id = GetNextAvailableId().ToString(),
+                Ident = Guid.NewGuid().ToString()
+            };
+            elements.Add(newElement);
+        }
+
+        private void OpenFile(object sender, EventArgs e)
+        {
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Filter = "XML files (*.xml)|*.xml|All files (*.*)|*.*";
+                dialog.Title = "Open AVA XML File";
+
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        SetStatus("Loading XML...");
+                        elements = XmlImporter.ImportFromXml(dialog.FileName);
+                        currentFilePath = dialog.FileName;
+                        RefreshGrid();
+                        SetStatus($"Loaded {elements.Count} elements from {Path.GetFileName(dialog.FileName)}");
+
+                        MessageBox.Show($"Successfully loaded {elements.Count} elements.", "Import Complete",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error loading file:\n{ex.Message}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        SetStatus("Load failed");
+                    }
+                }
+            }
+        }
+
+        private void SaveFile(object sender, EventArgs e)
+        {
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Filter = "XML files (*.xml)|*.xml|All files (*.*)|*.*";
+                dialog.Title = "Save AVA XML File";
+                dialog.FileName = string.IsNullOrEmpty(currentFilePath)
+                    ? "export.xml"
+                    : Path.GetFileName(currentFilePath);
+
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        SetStatus("Saving XML...");
+                        XmlExporter.ExportToXml(elements, dialog.FileName, false);
+                        currentFilePath = dialog.FileName;
+                        SetStatus($"Saved to {Path.GetFileName(dialog.FileName)}");
+
+                        MessageBox.Show($"Successfully exported {elements.Count} elements.", "Export Complete",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error saving file:\n{ex.Message}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        SetStatus("Save failed");
+                    }
+                }
+            }
+        }
+
+        private void AddElement(object sender, EventArgs e)
+        {
+            int nextId = GetNextAvailableId();
+
+            using (var form = new ElementEditForm(null, nextId))
+            {
+                if (form.ShowDialog() == DialogResult.OK)
+                {
+                    elements.Add(form.CostElement);
+                    RefreshGrid();
                     SetStatus("Element added");
                 }
             }
         }
 
-        private void EditElement()
+        private void EditElement(object sender, EventArgs e)
         {
-            // Get the current cell's row
-            if (dataGridView.CurrentCell == null)
+            if (dataGridView.CurrentCell == null || dataGridView.CurrentCell.RowIndex >= elements.Count)
             {
                 MessageBox.Show("Please select an element to edit.", "No Selection",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            var currentRow = dataGridView.Rows[dataGridView.CurrentCell.RowIndex];
-            var selectedElement = currentRow.DataBoundItem as CostElement;
+            int rowIndex = dataGridView.CurrentCell.RowIndex;
+            var element = elements[rowIndex];
+            int nextId = GetNextAvailableId();
 
-            if (selectedElement == null)
-            {
-                MessageBox.Show("Invalid selection.", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            using (var form = new ElementEditForm(selectedElement))
+            using (var form = new ElementEditForm(element, nextId))
             {
                 if (form.ShowDialog() == DialogResult.OK)
                 {
-                    var index = projectManager.Elements.IndexOf(selectedElement);
-                    projectManager.Elements[index] = form.CostElement;
-                    RefreshDataGrid();
+                    elements[rowIndex] = form.CostElement;
+                    RefreshGrid();
                     SetStatus("Element updated");
                 }
             }
         }
 
-        private void DeleteElement()
+        private void DeleteElement(object sender, EventArgs e)
         {
-            if (dataGridView.CurrentCell == null)
+            if (dataGridView.CurrentCell == null || dataGridView.CurrentCell.RowIndex >= elements.Count)
             {
                 MessageBox.Show("Please select an element to delete.", "No Selection",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            var currentRow = dataGridView.Rows[dataGridView.CurrentCell.RowIndex];
-            var selectedElement = currentRow.DataBoundItem as CostElement;
-
-            if (selectedElement == null)
-            {
-                MessageBox.Show("Invalid selection.", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            var result = MessageBox.Show("Are you sure you want to delete the selected element?",
+            var result = MessageBox.Show("Are you sure you want to delete this element?",
                 "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
             if (result == DialogResult.Yes)
             {
-                projectManager.Elements.Remove(selectedElement);
-                RefreshDataGrid();
+                int rowIndex = dataGridView.CurrentCell.RowIndex;
+                elements.RemoveAt(rowIndex);
+                RefreshGrid();
                 SetStatus("Element deleted");
             }
         }
 
-        private bool ConfirmUnsavedChanges()
+        private void ShowAbout(object sender, EventArgs e)
         {
-            return true;
+            MessageBox.Show(
+                "AVA XML Editor - Simplified Version\n\n" +
+                "Features:\n" +
+                "- Edit only necessary fields\n" +
+                "- Excel-like copy/paste\n" +
+                "- Preserves all XML data on export\n" +
+                "- Auto-incrementing IDs\n\n" +
+                "Version 2.0",
+                "About",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
 
         private void SetStatus(string message)
         {
             statusLabel.Text = message;
-            projectManager.AddLogMessage(message);
-        }
-
-        private void ShowProgress(bool show)
-        {
-            progressBar.Visible = show;
-        }
-
-        private void SearchBox_TextChanged(object sender, EventArgs e)
-        {
-            RefreshDataGrid();
-        }
-
-        private void MainForm_Load(object sender, EventArgs e)
-        {
+            Application.DoEvents();
         }
 
         private void MainForm_Load_1(object sender, EventArgs e)
         {
+            // Required for designer
         }
     }
 }

@@ -60,10 +60,6 @@
     <Compile Include="ElementEditForm.Designer.cs">
       <DependentUpon>ElementEditForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="EnhancedValidator.cs" />
-    <Compile Include="ExcelLikeDataGrid.cs">
-      <SubType>Component</SubType>
-    </Compile>
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -74,14 +70,6 @@
     <Compile Include="ProjectManager.cs" />
     <Compile Include="PropertiesSerializer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="TemplateManager.cs" />
-    <Compile Include="TreeGridHelper.cs" />
-    <Compile Include="ValidationResultForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="ValidationResultForm.Designer.cs">
-      <DependentUpon>ValidationResultForm.cs</DependentUpon>
-    </Compile>
     <Compile Include="XmlExporter.cs" />
     <Compile Include="XmlImporter.cs" />
     <EmbeddedResource Include="ElementEditForm.resx">
@@ -99,9 +87,6 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
-    <EmbeddedResource Include="ValidationResultForm.resx">
-      <DependentUpon>ValidationResultForm.cs</DependentUpon>
-    </EmbeddedResource>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>

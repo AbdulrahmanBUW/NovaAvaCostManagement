@@ -8,8 +8,8 @@ using System.Xml;
 namespace NovaAvaCostManagement
 {
     /// <summary>
-    /// Exports to AVA NOVA XML format - EXACT structure as input
-    /// DisplayNumber is NOT exported (display-only field)
+    /// Exports to AVA NOVA XML format - EXACT structure matching input
+    /// Name (costelement level) and Text (cecalculation level) are SEPARATE
     /// </summary>
     public class XmlExporter
     {
@@ -20,7 +20,7 @@ namespace NovaAvaCostManagement
                 var settings = new XmlWriterSettings
                 {
                     Indent = true,
-                    IndentChars = "  ",
+                    IndentChars = " ",
                     Encoding = Encoding.UTF8
                 };
 
@@ -51,30 +51,29 @@ namespace NovaAvaCostManagement
             writer.WriteStartElement("cefexport");
             writer.WriteAttributeString("version", "2");
 
-            // Write buildingfilters section (if needed)
+            // Write buildingfilters section
             writer.WriteStartElement("buildingfilters");
             writer.WriteEndElement();
 
             // Write costelements
             writer.WriteStartElement("costelements");
 
-            // Group by element ID (parent level)
-            var grouped = elements.GroupBy(e => e.Id).OrderBy(g => g.Key).ToList();
+            // Group by element ID (costelement level)
+            var grouped = elements.GroupBy(e => e.Id).OrderBy(g => int.TryParse(g.Key, out int id) ? id : 0).ToList();
 
             foreach (var group in grouped)
             {
-                // Get parent element (IsParentNode = true)
                 var parentElement = group.FirstOrDefault(e => e.IsParentNode) ?? group.First();
 
                 writer.WriteStartElement("costelement");
                 writer.WriteAttributeString("id", parentElement.Id);
 
-                // Write costelement-level fields
+                // COSTELEMENT LEVEL FIELDS
                 WriteElement(writer, "type", parentElement.ElementType.ToString());
-                WriteElement(writer, "name", parentElement.Name);
+                WriteElement(writer, "name", parentElement.Name);  // ← Name at costelement level
                 WriteElement(writer, "description", parentElement.Description);
 
-                // Write properties with CDATA
+                // Write properties with CDATA if not empty
                 if (!string.IsNullOrEmpty(parentElement.Properties))
                 {
                     writer.WriteStartElement("properties");
@@ -86,30 +85,45 @@ namespace NovaAvaCostManagement
                     WriteElement(writer, "properties", "");
                 }
 
-                WriteElement(writer, "children", parentElement.ChildrenCount.ToString());
-                WriteElement(writer, "openings", parentElement.OpeningsCount.ToString());
+                WriteElement(writer, "filter", parentElement.FilterValue.ToString());
+                WriteElement(writer, "children", parentElement.Children);
+                WriteElement(writer, "openings", parentElement.Openings);
                 WriteElement(writer, "created", parentElement.Created.ToString("yyyy-MM-ddTHH:mm:ss"));
+
+                // Write cecatalogassigns if catalog data exists
+                if (!string.IsNullOrEmpty(parentElement.CatalogName) || !string.IsNullOrEmpty(parentElement.CatalogType))
+                {
+                    writer.WriteStartElement("cecatalogassigns");
+                    writer.WriteStartElement("cecatalogassign");
+                    WriteElement(writer, "catalogname", parentElement.CatalogName);
+                    WriteElement(writer, "catalogtype", parentElement.CatalogType);
+                    WriteElement(writer, "name", "");
+                    WriteElement(writer, "number", "");
+                    WriteElement(writer, "reference", "");
+                    writer.WriteEndElement(); // cecatalogassign
+                    writer.WriteEndElement(); // cecatalogassigns
+                }
 
                 // Write cecalculations section
                 writer.WriteStartElement("cecalculations");
 
-                // Write all calculations for this element, ordered by Order field
+                // Write all calculations for this element
                 foreach (var calc in group.OrderBy(e => e.Order))
                 {
                     writer.WriteStartElement("cecalculation");
 
-                    // CRITICAL: Write exact values from XML - NO DisplayNumber
+                    // CECALCULATION LEVEL FIELDS
                     WriteElement(writer, "id", calc.CalculationId.ToString());
                     WriteElement(writer, "parent", calc.ParentCalcId.ToString());
                     WriteElement(writer, "order", calc.Order.ToString());
                     WriteElement(writer, "ident", calc.Ident);
                     WriteElement(writer, "bimkey", calc.BimKey);
 
-                    // Write text with CDATA
+                    // Write text with CDATA - THIS IS DIFFERENT FROM NAME!
                     if (!string.IsNullOrEmpty(calc.Text))
                     {
                         writer.WriteStartElement("text");
-                        writer.WriteCData(calc.Text);
+                        writer.WriteCData(calc.Text);  // ← Text at cecalculation level (DIFFERENT!)
                         writer.WriteEndElement();
                     }
                     else
@@ -133,7 +147,9 @@ namespace NovaAvaCostManagement
                     WriteElement(writer, "text_key", calc.TextKey);
                     WriteElement(writer, "stlno", calc.StlNo);
                     WriteElement(writer, "outlinetext_free", calc.OutlineTextFree);
-                    WriteElement(writer, "qty", "DXQuantity");  // Keep formula if present
+
+                    // Quantity - write formula if present, otherwise use value
+                    WriteElement(writer, "qty", string.IsNullOrEmpty(calc.Vob) ? FormatDecimal(calc.Qty) : "DXQuantity");
                     WriteElement(writer, "qty_result", FormatDecimal(calc.QtyResult));
                     WriteElement(writer, "qu", calc.Qu);
                     WriteElement(writer, "up", FormatDecimal(calc.Up));
@@ -147,11 +163,11 @@ namespace NovaAvaCostManagement
                     WriteElement(writer, "upcomp6", FormatDecimal(calc.UpComp6));
                     WriteElement(writer, "timequ", FormatDecimal(calc.TimeQu));
                     WriteElement(writer, "it", FormatDecimal(calc.It));
-                    WriteElement(writer, "vat", FormatDecimal(calc.Vat));
+                    WriteElement(writer, "vat", FormatDecimal(calc.Vat, "0.00"));
                     WriteElement(writer, "vatvalue", FormatDecimal(calc.VatValue));
-                    WriteElement(writer, "tax", FormatDecimal(calc.Tax));
+                    WriteElement(writer, "tax", FormatDecimal(calc.Tax, "0.00"));
                     WriteElement(writer, "taxvalue", FormatDecimal(calc.TaxValue));
-                    WriteElement(writer, "itgross", FormatDecimal(calc.ItGross));
+                    WriteElement(writer, "itgross", FormatDecimal(calc.ItGross, "0.00"));
                     WriteElement(writer, "sum", FormatDecimal(calc.Sum));
                     WriteElement(writer, "vob", calc.Vob);
                     WriteElement(writer, "vob_formula", calc.VobFormula);
@@ -159,9 +175,18 @@ namespace NovaAvaCostManagement
                     WriteElement(writer, "vob_type", calc.VobType);
                     WriteElement(writer, "vob_factor", FormatDecimal(calc.VobFactor));
                     WriteElement(writer, "on", calc.On);
-                    WriteElement(writer, "perctotal", FormatDecimal(calc.PercTotal));
+
+                    // Write additional with CDATA if present
+                    if (!string.IsNullOrEmpty(calc.Additional))
+                    {
+                        writer.WriteStartElement("additional");
+                        writer.WriteCData(calc.Additional);
+                        writer.WriteEndElement();
+                    }
+
+                    WriteElement(writer, "perctotal", FormatDecimal(calc.PercTotal, "0.00"));
                     WriteElement(writer, "marked", calc.Marked ? "1" : "0");
-                    WriteElement(writer, "percmarked", FormatDecimal(calc.PercMarked));
+                    WriteElement(writer, "percmarked", FormatDecimal(calc.PercMarked, "0.00"));
                     WriteElement(writer, "procunit", calc.ProcUnit);
                     WriteElement(writer, "color", calc.Color);
                     WriteElement(writer, "note", calc.Note);
@@ -204,9 +229,9 @@ namespace NovaAvaCostManagement
                 WriteElement(writer, "Description", element.Text);
                 WriteElement(writer, "LongText", element.LongText);
                 WriteElement(writer, "Unit", element.Qu);
-                WriteElement(writer, "Qty", FormatDecimal(element.Qty));
+                WriteElement(writer, "Qty", FormatDecimal(element.QtyResult));
                 WriteElement(writer, "UP", FormatDecimal(element.Up));
-                WriteElement(writer, "Total", FormatDecimal(element.Sum));
+                WriteElement(writer, "Total", FormatDecimal(element.UpResult));
 
                 if (!string.IsNullOrEmpty(element.Properties))
                 {
@@ -233,23 +258,23 @@ namespace NovaAvaCostManagement
         /// <summary>
         /// Format decimal for XML output
         /// </summary>
-        private static string FormatDecimal(decimal value)
+        private static string FormatDecimal(decimal value, string format = "0.000")
         {
-            return value.ToString("0.000", CultureInfo.InvariantCulture);
+            return value.ToString(format, CultureInfo.InvariantCulture);
         }
 
         /// <summary>
         /// Format decimal from string
         /// </summary>
-        private static string FormatDecimal(string value)
+        private static string FormatDecimal(string value, string format = "0.000")
         {
             if (string.IsNullOrWhiteSpace(value))
-                return "0.000";
+                return "0" + (format.Contains(".") ? ".000" : "");
 
             if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result))
-                return result.ToString("0.000", CultureInfo.InvariantCulture);
+                return result.ToString(format, CultureInfo.InvariantCulture);
 
-            return "0.000";
+            return "0" + (format.Contains(".") ? ".000" : "");
         }
     }
 }

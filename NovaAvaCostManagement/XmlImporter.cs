@@ -7,7 +7,7 @@ using System.Xml.Linq;
 namespace NovaAvaCostManagement
 {
     /// <summary>
-    /// Simple XML importer - reads data exactly as-is without interpretation
+    /// XML importer - reads data exactly as-is, properly separating Name and Text
     /// </summary>
     public class XmlImporter
     {
@@ -28,6 +28,29 @@ namespace NovaAvaCostManagement
                     // Get costelement ID
                     var elementId = elementNode.Attribute("id")?.Value ?? "";
 
+                    // IMPORTANT: Get Name from <name> tag at costelement level (NOT from <text>!)
+                    var elementName = GetValue(elementNode, "name") ?? "";  // ← <name> tag, not <n>
+                    var elementDescription = GetValue(elementNode, "description") ?? "";
+                    var elementType = ParseInt(GetValue(elementNode, "type"));
+                    var elementProperties = GetValue(elementNode, "properties") ?? "";
+                    var elementChildren = GetValue(elementNode, "children") ?? "";
+                    var elementOpenings = GetValue(elementNode, "openings") ?? "";
+                    var elementCreated = ParseDateTime(GetValue(elementNode, "created"));
+
+                    // Get catalog information from cecatalogassigns
+                    string catalogName = "";
+                    string catalogType = "";
+                    var catalogAssignsNode = elementNode.Element("cecatalogassigns");
+                    if (catalogAssignsNode != null)
+                    {
+                        var catalogAssign = catalogAssignsNode.Element("cecatalogassign");
+                        if (catalogAssign != null)
+                        {
+                            catalogName = GetValue(catalogAssign, "catalogname") ?? "";
+                            catalogType = GetValue(catalogAssign, "catalogtype") ?? "";
+                        }
+                    }
+
                     // Find cecalculations node
                     var calculationsNode = elementNode.Element("cecalculations");
                     if (calculationsNode != null)
@@ -38,36 +61,49 @@ namespace NovaAvaCostManagement
                         {
                             var element = new CostElement();
 
-                            // READ EXACTLY AS-IS - NO AUTO-GENERATION
-                            element.Id = elementId;  // costelement id
+                            // ============================================
+                            // COSTELEMENT LEVEL DATA (from parent node)
+                            // ============================================
+                            element.Id = elementId;
+                            element.Name = elementName;  // ← From <name> at costelement level
+                            element.Description = elementDescription;
+                            element.ElementType = elementType;
+                            element.Properties = elementProperties;
+                            element.Children = elementChildren;
+                            element.Openings = elementOpenings;
+                            element.Created = elementCreated;
+                            element.CatalogName = catalogName;  // ← From cecatalogassigns
+                            element.CatalogType = catalogType;  // ← From cecatalogassigns
+
+                            // ============================================
+                            // CECALCULATION LEVEL DATA (from this node)
+                            // ============================================
                             element.CalculationId = ParseInt(GetValue(calcNode, "id"));
-                            element.Id2 = GetValue(calcNode, "ident") ?? "";  // Show this as Code
-                            element.Ident = element.Id2;
+                            element.Ident = GetValue(calcNode, "ident") ?? "";
+                            element.Id2 = element.Ident;
 
                             // Parent/hierarchy
                             element.ParentCalcId = ParseInt(GetValue(calcNode, "parent"));
                             element.Order = ParseInt(GetValue(calcNode, "order"));
-
-                            // Determine if parent or child
                             element.IsParentNode = element.ParentCalcId == 0;
                             element.TreeLevel = element.IsParentNode ? 0 : 1;
 
-                            // Core fields - READ EXACTLY
+                            // Core fields - Text is DIFFERENT from Name!
                             element.BimKey = GetValue(calcNode, "bimkey") ?? "";
-                            element.Text = GetValue(calcNode, "text") ?? "";
+                            element.Text = GetValue(calcNode, "text") ?? "";  // ← From <text> at cecalculation level (DIFFERENT!)
                             element.LongText = GetValue(calcNode, "longtext") ?? "";
-                            element.Name = element.Text;  // Use text as name
                             element.TextSys = GetValue(calcNode, "text_sys") ?? "";
                             element.TextKey = GetValue(calcNode, "text_key") ?? "";
                             element.StlNo = GetValue(calcNode, "stlno") ?? "";
                             element.OutlineTextFree = GetValue(calcNode, "outlinetext_free") ?? "";
 
-                            // Quantities and pricing - READ EXACTLY
-                            element.Qty = ParseDecimal(GetValue(calcNode, "qty_result"));
-                            element.QtyResult = element.Qty;
+                            // Quantities and pricing
+                            var qtyValue = GetValue(calcNode, "qty");
+                            element.Qty = qtyValue == "DXQuantity" || qtyValue == "Count" ? 0 : ParseDecimal(qtyValue);
+                            element.QtyResult = ParseDecimal(GetValue(calcNode, "qty_result"));
                             element.Qu = GetValue(calcNode, "qu") ?? "";
                             element.Up = ParseDecimal(GetValue(calcNode, "up"));
-                            element.UpResult = ParseDecimal(GetValue(calcNode, "up_result"));
+                            element.UpResult = ParseDecimal(GetValue(calcNode, "up_result"));  // ← Total price
                             element.UpBkdn = ParseDecimal(GetValue(calcNode, "upbkdn"));
 
                             // Price components
@@ -103,19 +139,6 @@ namespace NovaAvaCostManagement
                             element.Color = GetValue(calcNode, "color") ?? "";
                             element.Note = GetValue(calcNode, "note") ?? "";
 
-                            // Get properties from parent costelement
-                            element.Properties = GetValue(elementNode, "properties") ?? "";
-
-                            // Get name and type from parent costelement
-                            var elementName = GetValue(elementNode, "name") ?? "";
-                            if (string.IsNullOrEmpty(element.Name))
-                                element.Name = elementName;
-
-                            element.ElementType = ParseInt(GetValue(elementNode, "type"));
-
-                            // DO NOT auto-generate anything
-                            // DO NOT call CalculateFields()
-                            // Just add the element as-is
                             elements.Add(element);
                         }
                     }
@@ -165,6 +188,17 @@ namespace NovaAvaCostManagement
                 return result;
 
             return 0m;
+        }
+
+        private static DateTime ParseDateTime(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return DateTime.Now;
+
+            if (DateTime.TryParse(value, out DateTime result))
+                return result;
+
+            return DateTime.Now;
         }
     }
 }
