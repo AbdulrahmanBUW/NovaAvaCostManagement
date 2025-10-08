@@ -441,9 +441,20 @@ namespace NovaAvaCostManagement
         {
             try
             {
-                // Generate properties based on current data
+                // Get IFC type from dropdown
+                string ifcType = cmbIfcType.Text?.Trim() ?? "";
+
+                if (string.IsNullOrEmpty(ifcType))
+                {
+                    MessageBox.Show("Please select an IFC Type first.", "IFC Type Required",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    cmbIfcType.Focus();
+                    return;
+                }
+
+                // Generate properties based on selected IFC type
                 var properties = PropertiesSerializer.SerializeProperties(
-                    CostElement.IfcType ?? "",
+                    ifcType,
                     CostElement.Material ?? "",
                     CostElement.Dimension ?? "",
                     CostElement.SegmentType ?? "");

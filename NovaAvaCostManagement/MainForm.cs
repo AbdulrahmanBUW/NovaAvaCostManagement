@@ -14,6 +14,7 @@ namespace NovaAvaCostManagement
     public partial class MainForm : Form
     {
         private List<CostElement> elements = new List<CostElement>();
+        private List<CostElement> copiedElements = new List<CostElement>();
         private List<string> availableIfcTypes = new List<string>();
         private DataGridView dataGridView;
         private MenuStrip menuStrip;
@@ -50,7 +51,7 @@ namespace NovaAvaCostManagement
             fileMenu.DropDownItems.Add("&Open AVA XML...", null, OpenFile);
             fileMenu.DropDownItems.Add("&Save AVA XML...", null, SaveFile);
             fileMenu.DropDownItems.Add(new ToolStripSeparator());
-            fileMenu.DropDownItems.Add("E&xit", null, (s, e) => this.Close());
+            fileMenu.DropDownItems.Add("E&xit", null, (s, args) => this.Close()); // FIXED: Changed 'e' to 'args'
             menuStrip.Items.Add(fileMenu);
 
             // Edit Menu
@@ -139,7 +140,7 @@ namespace NovaAvaCostManagement
             dataGridView.KeyDown += DataGridView_KeyDown;
             dataGridView.CellValueChanged += DataGridView_CellValueChanged;
             dataGridView.UserDeletingRow += DataGridView_UserDeletingRow;
-            dataGridView.DoubleClick += (s, e) => EditElement(s, e);
+            dataGridView.DoubleClick += (s, args) => EditElement(s, args);
             dataGridView.CellMouseDown += DataGridView_CellMouseDown;
 
             this.Controls.Add(dataGridView);
@@ -149,16 +150,19 @@ namespace NovaAvaCostManagement
         {
             var contextMenu = new ContextMenuStrip();
 
-            contextMenu.Items.Add("Copy (Ctrl+C)", null, (s, e) => CopyCells());
-            contextMenu.Items.Add("Paste (Ctrl+V)", null, (s, e) => PasteCells());
-            contextMenu.Items.Add("Clear (Delete)", null, (s, e) => ClearSelectedCells());
+            contextMenu.Items.Add("Copy Elements", null, (EventHandler)CopyElements);
+            contextMenu.Items.Add("Paste Elements at End", null, (EventHandler)PasteElements);
             contextMenu.Items.Add(new ToolStripSeparator());
-            contextMenu.Items.Add("Edit Element (F2)", null, EditElement);
-            contextMenu.Items.Add("View Full Text", null, ViewFullText);
+            contextMenu.Items.Add("Copy Cells (Ctrl+C)", null, (EventHandler)CopyCells);
+            contextMenu.Items.Add("Paste Cells (Ctrl+V)", null, (EventHandler)PasteCells);
+            contextMenu.Items.Add("Clear Cells (Delete)", null, (EventHandler)ClearSelectedCells);
             contextMenu.Items.Add(new ToolStripSeparator());
-            contextMenu.Items.Add("Add Element Above", null, AddElementAbove);
-            contextMenu.Items.Add("Add Element Below", null, AddElementBelow);
-            contextMenu.Items.Add("Delete Element", null, DeleteElement);
+            contextMenu.Items.Add("Edit Element (F2)", null, (EventHandler)EditElement);
+            contextMenu.Items.Add("View Full Text", null, (EventHandler)ViewFullText);
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add("Add Element Above", null, (EventHandler)AddElementAbove);
+            contextMenu.Items.Add("Add Element Below", null, (EventHandler)AddElementBelow);
+            contextMenu.Items.Add("Delete Element", null, (EventHandler)DeleteElement);
 
             dataGridView.ContextMenuStrip = contextMenu;
         }
@@ -392,22 +396,30 @@ namespace NovaAvaCostManagement
 
         private void DataGridView_KeyDown(object sender, KeyEventArgs e)
         {
-            // Ctrl+C - Copy
+            // Ctrl+C - Copy selected elements (if rows are selected) or cells
             if (e.Control && e.KeyCode == Keys.C)
             {
-                CopyCells();
-                e.Handled = true;
+                if (dataGridView.SelectedRows.Count > 0)
+                {
+                    CopyElements(sender, e);
+                    e.Handled = true;
+                }
+                else
+                {
+                    CopyCells(sender, e);
+                    e.Handled = true;
+                }
             }
-            // Ctrl+V - Paste
+            // Ctrl+V - Paste elements at end
             else if (e.Control && e.KeyCode == Keys.V)
             {
-                PasteCells();
+                PasteElements(sender, e);
                 e.Handled = true;
             }
             // Delete - Clear cells
             else if (e.KeyCode == Keys.Delete && !dataGridView.IsCurrentCellInEditMode)
             {
-                ClearSelectedCells();
+                ClearSelectedCells(sender, e);
                 e.Handled = true;
             }
             // Ctrl+N - Add new element
@@ -424,7 +436,87 @@ namespace NovaAvaCostManagement
             }
         }
 
-        private void CopyCells()
+        // NEW: Copy entire elements (for context menu)
+        private void CopyElements(object sender, EventArgs e)
+        {
+            if (dataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select one or more rows to copy.", "No Selection",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                copiedElements.Clear();
+
+                // Get selected elements in order
+                var selectedIndices = dataGridView.SelectedRows
+                    .Cast<DataGridViewRow>()
+                    .Where(row => row.Index < elements.Count)
+                    .Select(row => row.Index)
+                    .OrderBy(index => index)
+                    .ToList();
+
+                foreach (int index in selectedIndices)
+                {
+                    copiedElements.Add(elements[index].Clone());
+                }
+
+                SetStatus($"Copied {copiedElements.Count} element(s) to clipboard");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Copy error: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        // NEW: Paste entire elements at the end
+        private void PasteElements(object sender, EventArgs e)
+        {
+            if (copiedElements.Count == 0)
+            {
+                MessageBox.Show("No elements copied to paste.", "No Elements",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                int startIndex = elements.Count;
+                int pastedCount = 0;
+
+                foreach (var copiedElement in copiedElements)
+                {
+                    var newElement = copiedElement.Clone();
+
+                    // Generate new ID and GUID for the pasted element
+                    newElement.Id = GetNextAvailableId().ToString();
+                    newElement.Ident = Guid.NewGuid().ToString();
+
+                    elements.Add(newElement);
+                    pastedCount++;
+                }
+
+                RefreshGrid();
+                SetStatus($"Pasted {pastedCount} element(s) at the end");
+
+                // Auto-scroll to show pasted elements
+                if (elements.Count > 0)
+                {
+                    dataGridView.FirstDisplayedScrollingRowIndex = startIndex;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Paste error: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        // EXISTING: Copy cells (for cell-level operations)
+        private void CopyCells(object sender, EventArgs e)
         {
             if (dataGridView.SelectedRows.Count == 0 && dataGridView.GetCellCount(DataGridViewElementStates.Selected) == 0)
                 return;
@@ -447,7 +539,7 @@ namespace NovaAvaCostManagement
                     // Serialize to clipboard in tab-delimited format
                     var clipboardText = new System.Text.StringBuilder();
 
-                    foreach (var element in selectedElements.OrderBy(e => elements.IndexOf(e)))
+                    foreach (var element in selectedElements.OrderBy(el => elements.IndexOf(el)))
                     {
                         clipboardText.AppendLine(string.Join("\t",
                             element.Id,
@@ -483,7 +575,8 @@ namespace NovaAvaCostManagement
             }
         }
 
-        private void PasteCells()
+        // EXISTING: Paste cells (for cell-level operations)
+        private void PasteCells(object sender, EventArgs e)
         {
             if (!Clipboard.ContainsText())
                 return;
@@ -628,7 +721,7 @@ namespace NovaAvaCostManagement
             }
         }
 
-        private void ClearSelectedCells()
+        private void ClearSelectedCells(object sender, EventArgs e)
         {
             foreach (DataGridViewCell cell in dataGridView.SelectedCells)
             {
@@ -690,7 +783,7 @@ namespace NovaAvaCostManagement
             }
         }
 
-        private void DataGridView_UserDeletingRow(object sender, DataGridViewRowCancelEventArgs e)
+        private void DataGridView_UserDeletingRow(object sender, DataGridViewRowCancelEventArgs args)
         {
             // Prevent accidental deletion
             var result = MessageBox.Show("Delete this element?", "Confirm Delete",
@@ -698,7 +791,7 @@ namespace NovaAvaCostManagement
 
             if (result != DialogResult.Yes)
             {
-                e.Cancel = true;
+                args.Cancel = true;
             }
         }
 

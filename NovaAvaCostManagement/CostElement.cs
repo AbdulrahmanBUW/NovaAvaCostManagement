@@ -228,7 +228,7 @@ namespace NovaAvaCostManagement
                 UpResult = this.UpResult,
                 Qu = this.Qu,
 
-                // All read-only fields
+                // All read-only fields (preserve all data)
                 Version = this.Version,
                 Id = this.Id,
                 CalculationId = this.CalculationId,
@@ -251,7 +251,6 @@ namespace NovaAvaCostManagement
                 StlNo = this.StlNo,
                 OutlineTextFree = this.OutlineTextFree,
                 Qty = this.Qty,
-                // Note: Up and UpResult are in editable section
                 UpBkdn = this.UpBkdn,
                 UpComp1 = this.UpComp1,
                 UpComp2 = this.UpComp2,

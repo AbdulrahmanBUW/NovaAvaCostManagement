@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Add this new file: NovaAvaCostManagement/PropertiesSerializer.cs
+using System;
 using System.Text;
 
 namespace NovaAvaCostManagement
