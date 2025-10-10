@@ -229,10 +229,6 @@ Implement new export logic in `XmlExporter` following existing patterns for GAEB
 #### Validation Rules
 Add custom validation logic in `CostElement.Validate()` method.
 
-## License
-
-This project is provided as-is for educational and demonstration purposes. Please check individual file headers for specific licensing information.
-
 ## Support
 
 For issues and feature requests, please refer to the application's About dialog or contact the development team.
