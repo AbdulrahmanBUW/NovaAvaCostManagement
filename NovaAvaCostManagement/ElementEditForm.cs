@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 using System.Windows.Forms;
 
 namespace NovaAvaCostManagement
@@ -10,33 +9,28 @@ namespace NovaAvaCostManagement
     {
         public CostElement CostElement { get; private set; }
         private int nextAvailableId;
-        private List<string> availableIfcTypes = new List<string>();
 
         // Editable controls
-        private TextBox txtName, txtChildren, txtCatalogName, txtIdent, txtCatalogType;
-        private TextBox txtCatalogItemName, txtCatalogNumber;  // NEW FIELDS
-        private TextBox txtText, txtLongText, txtQtyResult, txtQu, txtUp;
-        private ComboBox cmbIfcType;
+        private TextBox txtName, txtDescription, txtChildren;
+        private TextBox txtIdent, txtText, txtLongText, txtQty, txtQtyResult, txtQu, txtUp;
+
+        // SPEC fields
+        private TextBox txtSpecFilter, txtSpecName, txtSpecSize;
+        private TextBox txtSpecType, txtSpecManufacturer, txtSpecMaterial;
+
+        // Properties display
         private Label lblProperties;
         private Button btnGenerateProperties, btnGenerateGuid;
-
-        // Read-only info controls
-        private GroupBox grpReadOnly;
-        private TextBox txtIdReadOnly, txtCalcIdReadOnly, txtElementTypeReadOnly;
-        private TextBox txtBimKeyReadOnly, txtOrderReadOnly, txtSumReadOnly;
 
         private Button btnOK, btnCancel;
         private Panel scrollPanel, buttonPanel;
 
         public ElementEditForm() : this(null, 1) { }
 
-        public ElementEditForm(CostElement element, int nextId) : this(element, nextId, new List<string>()) { }
-
-        public ElementEditForm(CostElement element, int nextId, List<string> ifcTypesFromXml)
+        public ElementEditForm(CostElement element, int nextId)
         {
             InitializeComponent();
             nextAvailableId = nextId;
-            availableIfcTypes = ifcTypesFromXml ?? new List<string>();
 
             if (element == null)
             {
@@ -57,10 +51,10 @@ namespace NovaAvaCostManagement
 
         private void InitializeCustomComponents()
         {
-            this.Size = new Size(700, 850);
+            this.Size = new Size(750, 900);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.Sizable;
-            this.MinimumSize = new Size(700, 650);
+            this.MinimumSize = new Size(750, 700);
 
             var mainContainer = new Panel
             {
@@ -72,68 +66,176 @@ namespace NovaAvaCostManagement
             scrollPanel = new Panel
             {
                 Location = new Point(0, 0),
-                Size = new Size(660, 700),
+                Size = new Size(710, 780),
                 AutoScroll = true,
                 BorderStyle = BorderStyle.FixedSingle
             };
             mainContainer.Controls.Add(scrollPanel);
 
             int yPos = 20;
-            const int labelWidth = 130;
+            const int labelWidth = 150;
             const int textBoxWidth = 500;
             const int spacing = 35;
 
-            // SECTION 1: EDITABLE FIELDS
-            var lblEditableSection = new Label
+            // SECTION 1: BASIC INFORMATION
+            var lblBasicSection = new Label
             {
-                Text = "EDITABLE FIELDS",
+                Text = "BASIC INFORMATION",
                 Location = new Point(20, yPos),
                 Size = new Size(textBoxWidth, 25),
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 ForeColor = Color.DarkBlue
             };
-            scrollPanel.Controls.Add(lblEditableSection);
+            scrollPanel.Controls.Add(lblBasicSection);
             yPos += 35;
 
-            // ID (Auto-assigned for new, read-only for existing)
-            AddLabelAndTextBox("ID (Auto):", ref txtIdReadOnly, ref yPos, labelWidth, textBoxWidth, spacing, true);
-            txtIdReadOnly.Text = CostElement.Id;
-            txtIdReadOnly.BackColor = SystemColors.Control;
+            // Cost-ID (Read-only display)
+            var lblCostId = new Label
+            {
+                Text = "Cost-ID:",
+                Location = new Point(20, yPos),
+                Size = new Size(labelWidth, 20),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold)
+            };
+            scrollPanel.Controls.Add(lblCostId);
+
+            var txtCostId = new TextBox
+            {
+                Location = new Point(180, yPos),
+                Size = new Size(150, 20),
+                Text = CostElement.Id,
+                ReadOnly = true,
+                BackColor = SystemColors.Control
+            };
+            scrollPanel.Controls.Add(txtCostId);
+            yPos += spacing;
 
             // Name
             AddLabelAndTextBox("Name *:", ref txtName, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // Children
-            AddLabelAndTextBox("Children:", ref txtChildren, ref yPos, labelWidth, textBoxWidth, spacing);
+            // Description
+            AddLabelAndTextBox("Description:", ref txtDescription, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // CATALOG SECTION
-            var lblCatalogSection = new Label
+            // SECTION 2: SPEC PARAMETERS
+            var lblSpecSection = new Label
             {
-                Text = "CATALOG INFORMATION",
+                Text = "SPEC PARAMETERS (for Properties Generation)",
                 Location = new Point(20, yPos),
-                Size = new Size(textBoxWidth, 25),
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Size = new Size(textBoxWidth + 50, 25),
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 ForeColor = Color.DarkGreen
             };
-            scrollPanel.Controls.Add(lblCatalogSection);
-            yPos += 30;
+            scrollPanel.Controls.Add(lblSpecSection);
+            yPos += 35;
 
-            // Catalog Name
-            AddLabelAndTextBox("Catalog Name:", ref txtCatalogName, ref yPos, labelWidth, textBoxWidth, spacing);
+            // SPEC Filter
+            AddLabelAndTextBox("DX.SPEC_filter:", ref txtSpecFilter, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // Catalog Type
-            AddLabelAndTextBox("Catalog Type:", ref txtCatalogType, ref yPos, labelWidth, textBoxWidth, spacing);
+            // SPEC Name
+            AddLabelAndTextBox("DX.SPEC_Name:", ref txtSpecName, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // Catalog Item Name (NEW)
-            AddLabelAndTextBox("Catalog Item Name:", ref txtCatalogItemName, ref yPos, labelWidth, textBoxWidth, spacing);
+            // SPEC Size
+            AddLabelAndTextBox("DX.SPEC_Size:", ref txtSpecSize, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // Catalog Number (NEW)
-            AddLabelAndTextBox("Catalog Number:", ref txtCatalogNumber, ref yPos, labelWidth, textBoxWidth, spacing);
+            // SPEC Type
+            AddLabelAndTextBox("DX.SPEC_Type:", ref txtSpecType, ref yPos, labelWidth, textBoxWidth, spacing);
+
+            // SPEC Manufacturer
+            AddLabelAndTextBox("DX.SPEC_Manufacturer:", ref txtSpecManufacturer, ref yPos, labelWidth, textBoxWidth, spacing);
+
+            // SPEC Material
+            AddLabelAndTextBox("DX.SPEC_Material:", ref txtSpecMaterial, ref yPos, labelWidth, textBoxWidth, spacing);
+
+            // Properties (read-only display with generate button)
+            var lblPropertiesLabel = new Label
+            {
+                Text = "Properties (Generated):",
+                Location = new Point(20, yPos),
+                Size = new Size(labelWidth, 20)
+            };
+            scrollPanel.Controls.Add(lblPropertiesLabel);
+
+            lblProperties = new Label
+            {
+                Location = new Point(180, yPos),
+                Size = new Size(textBoxWidth, 60),
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = SystemColors.Control,
+                Font = new Font("Consolas", 8F),
+                ForeColor = Color.Gray,
+                Text = "(Click Generate to create properties)"
+            };
+            scrollPanel.Controls.Add(lblProperties);
+
+            btnGenerateProperties = new Button
+            {
+                Text = "Generate Properties",
+                Location = new Point(180, yPos + 65),
+                Size = new Size(150, 30),
+                BackColor = Color.FromArgb(0, 120, 215),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            btnGenerateProperties.Click += BtnGenerateProperties_Click;
+            scrollPanel.Controls.Add(btnGenerateProperties);
+            yPos += 105;
+
+            // SECTION 3: CALCULATION FIELDS
+            var lblCalcSection = new Label
+            {
+                Text = "CALCULATION INFORMATION",
+                Location = new Point(20, yPos),
+                Size = new Size(textBoxWidth, 25),
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+                ForeColor = Color.DarkBlue
+            };
+            scrollPanel.Controls.Add(lblCalcSection);
+            yPos += 35;
+
+            // Line-ID and Order (Read-only display)
+            var lblLineId = new Label
+            {
+                Text = "Line-ID:",
+                Location = new Point(20, yPos),
+                Size = new Size(75, 20),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold)
+            };
+            scrollPanel.Controls.Add(lblLineId);
+
+            var txtLineId = new TextBox
+            {
+                Location = new Point(100, yPos),
+                Size = new Size(100, 20),
+                Text = CostElement.CalculationId.ToString(),
+                ReadOnly = true,
+                BackColor = SystemColors.Control
+            };
+            scrollPanel.Controls.Add(txtLineId);
+
+            var lblOrder = new Label
+            {
+                Text = "Order:",
+                Location = new Point(220, yPos),
+                Size = new Size(60, 20),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold)
+            };
+            scrollPanel.Controls.Add(lblOrder);
+
+            var txtOrder = new TextBox
+            {
+                Location = new Point(285, yPos),
+                Size = new Size(100, 20),
+                Text = CostElement.Order.ToString(),
+                ReadOnly = true,
+                BackColor = SystemColors.Control
+            };
+            scrollPanel.Controls.Add(txtOrder);
+            yPos += spacing;
 
             // Ident (GUID) with generate button
             var lblIdent = new Label
             {
-                Text = "Ident (GUID) *:",
+                Text = "GUID-Ident *:",
                 Location = new Point(20, yPos),
                 Size = new Size(labelWidth, 20)
             };
@@ -141,7 +243,7 @@ namespace NovaAvaCostManagement
 
             txtIdent = new TextBox
             {
-                Location = new Point(160, yPos),
+                Location = new Point(180, yPos),
                 Size = new Size(300, 20),
                 ReadOnly = true,
                 BackColor = Color.LightYellow
@@ -151,7 +253,7 @@ namespace NovaAvaCostManagement
             btnGenerateGuid = new Button
             {
                 Text = "Generate",
-                Location = new Point(470, yPos),
+                Location = new Point(490, yPos),
                 Size = new Size(80, 23)
             };
             btnGenerateGuid.Click += BtnGenerateGuid_Click;
@@ -172,126 +274,51 @@ namespace NovaAvaCostManagement
 
             txtLongText = new TextBox
             {
-                Location = new Point(160, yPos),
+                Location = new Point(180, yPos),
                 Size = new Size(textBoxWidth, 60),
                 Multiline = true,
-                MaxLength = 2000,
+                MaxLength = 4000,
                 ScrollBars = ScrollBars.Vertical
             };
             scrollPanel.Controls.Add(txtLongText);
             yPos += 70;
 
+            // Quantity (formula)
+            AddLabelAndTextBox("Quantity (Formula):", ref txtQty, ref yPos, labelWidth, textBoxWidth, spacing);
+
             // Quantity Result
-            AddLabelAndTextBox("Qty Result:", ref txtQtyResult, ref yPos, labelWidth, textBoxWidth, spacing);
+            AddLabelAndTextBox("Qty Result *:", ref txtQtyResult, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // Unit Price
-            AddLabelAndTextBox("Unit Price:", ref txtUp, ref yPos, labelWidth, textBoxWidth, spacing);
+            // Unit (Einheit)
+            AddLabelAndTextBox("Einheit (Unit):", ref txtQu, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // Unit
-            AddLabelAndTextBox("Unit (qu):", ref txtQu, ref yPos, labelWidth, textBoxWidth, spacing);
+            // Price (Unit Price)
+            AddLabelAndTextBox("Price (Up) *:", ref txtUp, ref yPos, labelWidth, textBoxWidth, spacing);
 
-            // IFC SECTION
-            var lblIfcSection = new Label
+            // Total (Auto-calculated - read-only display)
+            var lblTotal = new Label
             {
-                Text = "IFC PARAMETERS",
+                Text = "Total (Auto-calc):",
                 Location = new Point(20, yPos),
-                Size = new Size(textBoxWidth + 150, 25),
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
-                ForeColor = Color.DarkGreen
-            };
-            scrollPanel.Controls.Add(lblIfcSection);
-            yPos += 30;
-
-            // IFC Type dropdown
-            var lblIfcType = new Label
-            {
-                Text = "IFC Type:",
-                Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20)
-            };
-            scrollPanel.Controls.Add(lblIfcType);
-
-            cmbIfcType = new ComboBox
-            {
-                Location = new Point(160, yPos),
-                Size = new Size(textBoxWidth, 20),
-                DropDownStyle = ComboBoxStyle.DropDown
-            };
-
-            if (availableIfcTypes != null && availableIfcTypes.Any())
-            {
-                cmbIfcType.Items.AddRange(availableIfcTypes.ToArray());
-            }
-            else
-            {
-                cmbIfcType.Items.AddRange(new[] {
-                    "IFCPIPESEGMENT", "IFCPIPEFITTING", "IFCWALL", "IFCBEAM",
-                    "IFCSLAB", "IFCDOOR", "IFCWINDOW", "IFCCOLUMN"
-                });
-            }
-
-            scrollPanel.Controls.Add(cmbIfcType);
-            yPos += spacing;
-
-            // Properties (read-only display with generate button)
-            var lblPropertiesLabel = new Label
-            {
-                Text = "Properties:",
-                Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20)
-            };
-            scrollPanel.Controls.Add(lblPropertiesLabel);
-
-            lblProperties = new Label
-            {
-                Location = new Point(160, yPos),
-                Size = new Size(textBoxWidth, 40),
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = SystemColors.Control,
-                Font = new Font("Consolas", 8F),
-                ForeColor = Color.Gray,
-                Text = "(Click Generate to create properties)"
-            };
-            scrollPanel.Controls.Add(lblProperties);
-
-            btnGenerateProperties = new Button
-            {
-                Text = "Generate",
-                Location = new Point(160, yPos + 45),
-                Size = new Size(80, 25)
-            };
-            btnGenerateProperties.Click += BtnGenerateProperties_Click;
-            scrollPanel.Controls.Add(btnGenerateProperties);
-            yPos += 80;
-
-            // SECTION 2: READ-ONLY INFORMATION
-            grpReadOnly = new GroupBox
-            {
-                Text = "READ-ONLY INFORMATION",
-                Location = new Point(20, yPos),
-                Size = new Size(textBoxWidth + 150, 180),
+                Size = new Size(labelWidth, 20),
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold)
             };
+            scrollPanel.Controls.Add(lblTotal);
 
-            int readOnlyY = 25;
-            const int readOnlySpacing = 30;
+            var txtTotal = new TextBox
+            {
+                Location = new Point(180, yPos),
+                Size = new Size(200, 20),
+                ReadOnly = true,
+                BackColor = Color.FromArgb(230, 255, 230),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Text = CostElement.UpResult.ToString("F3")
+            };
+            scrollPanel.Controls.Add(txtTotal);
+            yPos += spacing;
 
-            AddReadOnlyField(grpReadOnly, "Calculation ID:", ref txtCalcIdReadOnly, readOnlyY, labelWidth);
-            readOnlyY += readOnlySpacing;
-
-            AddReadOnlyField(grpReadOnly, "Element Type:", ref txtElementTypeReadOnly, readOnlyY, labelWidth);
-            readOnlyY += readOnlySpacing;
-
-            AddReadOnlyField(grpReadOnly, "BIM Key:", ref txtBimKeyReadOnly, readOnlyY, labelWidth);
-            readOnlyY += readOnlySpacing;
-
-            AddReadOnlyField(grpReadOnly, "Order:", ref txtOrderReadOnly, readOnlyY, labelWidth);
-            readOnlyY += readOnlySpacing;
-
-            AddReadOnlyField(grpReadOnly, "Sum:", ref txtSumReadOnly, readOnlyY, labelWidth);
-
-            scrollPanel.Controls.Add(grpReadOnly);
-            yPos += 190;
+            // Children
+            AddLabelAndTextBox("Children:", ref txtChildren, ref yPos, labelWidth, textBoxWidth, spacing);
 
             scrollPanel.AutoScrollMinSize = new Size(0, yPos + 20);
 
@@ -309,7 +336,10 @@ namespace NovaAvaCostManagement
                 Size = new Size(100, 35),
                 Location = new Point(mainContainer.Width - 220, 15),
                 Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold)
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+                BackColor = Color.FromArgb(0, 120, 215),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
             };
             btnOK.Click += BtnOK_Click;
             buttonPanel.Controls.Add(btnOK);
@@ -344,7 +374,7 @@ namespace NovaAvaCostManagement
 
             textBox = new TextBox
             {
-                Location = new Point(160, yPos),
+                Location = new Point(180, yPos),
                 Size = new Size(textBoxWidth, 20),
                 ReadOnly = readOnly
             };
@@ -358,68 +388,45 @@ namespace NovaAvaCostManagement
             yPos += spacing;
         }
 
-        private void AddReadOnlyField(GroupBox parent, string labelText, ref TextBox textBox, int y, int labelWidth)
-        {
-            var label = new Label
-            {
-                Text = labelText,
-                Location = new Point(10, y),
-                Size = new Size(labelWidth, 20),
-                Font = new Font("Segoe UI", 9F)
-            };
-            parent.Controls.Add(label);
-
-            textBox = new TextBox
-            {
-                Location = new Point(140, y),
-                Size = new Size(200, 20),
-                ReadOnly = true,
-                BackColor = SystemColors.Control,
-                Font = new Font("Segoe UI", 9F)
-            };
-            parent.Controls.Add(textBox);
-        }
-
         private void LoadElementData()
         {
             txtName.Text = CostElement.Name;
+            txtDescription.Text = CostElement.Description;
             txtChildren.Text = CostElement.Children;
-            txtCatalogName.Text = CostElement.CatalogName;
-            txtCatalogType.Text = CostElement.CatalogType;
-            txtCatalogItemName.Text = CostElement.CatalogItemName;  // NEW
-            txtCatalogNumber.Text = CostElement.CatalogNumber;      // NEW
-            txtIdent.Text = CostElement.Ident;
-            txtText.Text = CostElement.Text;
-            txtLongText.Text = CostElement.LongText;
-            txtQtyResult.Text = CostElement.QtyResult.ToString();
-            txtUp.Text = CostElement.Up.ToString();
-            txtQu.Text = CostElement.Qu;
 
-            string currentIfcType = CostElement.GetIfcTypeFromProperties();
-            if (!string.IsNullOrEmpty(currentIfcType))
+            // Parse existing properties to populate SPEC fields
+            if (!string.IsNullOrEmpty(CostElement.Properties))
             {
-                cmbIfcType.Text = currentIfcType;
+                CostElement.ParseIfcParameters();
             }
+
+            txtSpecFilter.Text = CostElement.SpecFilter;
+            txtSpecName.Text = CostElement.SpecName;
+            txtSpecSize.Text = CostElement.SpecSize;
+            txtSpecType.Text = CostElement.SpecType;
+            txtSpecManufacturer.Text = CostElement.SpecManufacturer;
+            txtSpecMaterial.Text = CostElement.SpecMaterial;
 
             if (!string.IsNullOrEmpty(CostElement.Properties))
             {
-                lblProperties.Text = CostElement.Properties.Length > 100
-                    ? CostElement.Properties.Substring(0, 100) + "..."
+                lblProperties.Text = CostElement.Properties.Length > 150
+                    ? CostElement.Properties.Substring(0, 150) + "..."
                     : CostElement.Properties;
                 lblProperties.ForeColor = Color.Black;
             }
 
-            txtIdReadOnly.Text = CostElement.Id;
-            txtCalcIdReadOnly.Text = CostElement.CalculationId.ToString();
-            txtElementTypeReadOnly.Text = CostElement.ElementType.ToString();
-            txtBimKeyReadOnly.Text = CostElement.BimKey;
-            txtOrderReadOnly.Text = CostElement.Order.ToString();
-            txtSumReadOnly.Text = CostElement.Sum.ToString("F2");
+            txtIdent.Text = CostElement.Ident;
+            txtText.Text = CostElement.Text;
+            txtLongText.Text = CostElement.LongText;
+            txtQty.Text = CostElement.Qty;
+            txtQtyResult.Text = CostElement.QtyResult.ToString();
+            txtQu.Text = CostElement.Qu;
+            txtUp.Text = CostElement.Up.ToString();
         }
 
         private void BtnGenerateGuid_Click(object sender, EventArgs e)
         {
-            txtIdent.Text = Guid.NewGuid().ToString();
+            txtIdent.Text = Guid.NewGuid().ToString().Replace("-", "");
             MessageBox.Show($"New GUID generated:\n{txtIdent.Text}", "GUID Generated",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -428,30 +435,29 @@ namespace NovaAvaCostManagement
         {
             try
             {
-                string ifcType = cmbIfcType.Text?.Trim() ?? "";
+                var properties = PropertiesSerializer.SerializeSpecProperties(
+                    txtSpecFilter.Text?.Trim() ?? "",
+                    txtSpecName.Text?.Trim() ?? "",
+                    txtSpecSize.Text?.Trim() ?? "",
+                    txtSpecType.Text?.Trim() ?? "",
+                    txtSpecManufacturer.Text?.Trim() ?? "",
+                    txtSpecMaterial.Text?.Trim() ?? "");
 
-                if (string.IsNullOrEmpty(ifcType))
+                if (string.IsNullOrEmpty(properties))
                 {
-                    MessageBox.Show("Please select an IFC Type first.", "IFC Type Required",
+                    MessageBox.Show("Please fill in at least one SPEC field.", "No SPEC Data",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    cmbIfcType.Focus();
                     return;
                 }
 
-                var properties = PropertiesSerializer.SerializeProperties(
-                    ifcType,
-                    CostElement.Material ?? "",
-                    CostElement.Dimension ?? "",
-                    CostElement.SegmentType ?? "");
-
                 CostElement.Properties = properties;
 
-                lblProperties.Text = properties.Length > 100
-                    ? properties.Substring(0, 100) + "..."
+                lblProperties.Text = properties.Length > 150
+                    ? properties.Substring(0, 150) + "..."
                     : properties;
                 lblProperties.ForeColor = Color.Green;
 
-                MessageBox.Show("Properties generated successfully!", "Success",
+                MessageBox.Show("Properties generated successfully!\n\n" + properties, "Success",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
@@ -467,14 +473,20 @@ namespace NovaAvaCostManagement
                 return;
 
             CostElement.Name = txtName.Text.Trim();
+            CostElement.Description = txtDescription.Text.Trim();
             CostElement.Children = txtChildren.Text.Trim();
-            CostElement.CatalogName = txtCatalogName.Text.Trim();
-            CostElement.CatalogType = txtCatalogType.Text.Trim();
-            CostElement.CatalogItemName = txtCatalogItemName.Text.Trim();  // NEW
-            CostElement.CatalogNumber = txtCatalogNumber.Text.Trim();      // NEW
+
+            CostElement.SpecFilter = txtSpecFilter.Text.Trim();
+            CostElement.SpecName = txtSpecName.Text.Trim();
+            CostElement.SpecSize = txtSpecSize.Text.Trim();
+            CostElement.SpecType = txtSpecType.Text.Trim();
+            CostElement.SpecManufacturer = txtSpecManufacturer.Text.Trim();
+            CostElement.SpecMaterial = txtSpecMaterial.Text.Trim();
+
             CostElement.Ident = txtIdent.Text.Trim();
             CostElement.Text = txtText.Text.Trim();
             CostElement.LongText = txtLongText.Text.Trim();
+            CostElement.Qty = txtQty.Text.Trim();
 
             if (decimal.TryParse(txtQtyResult.Text, out decimal qty))
                 CostElement.QtyResult = qty;
@@ -528,7 +540,7 @@ namespace NovaAvaCostManagement
             {
                 if (!decimal.TryParse(txtUp.Text, out decimal up) || up < 0)
                 {
-                    MessageBox.Show("Unit Price must be a non-negative number.", "Validation Error",
+                    MessageBox.Show("Price must be a non-negative number.", "Validation Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     txtUp.Focus();
                     return false;

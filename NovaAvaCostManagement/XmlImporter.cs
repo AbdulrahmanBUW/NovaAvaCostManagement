@@ -7,7 +7,7 @@ using System.Xml.Linq;
 namespace NovaAvaCostManagement
 {
     /// <summary>
-    /// XML importer - reads data exactly as-is, properly separating Name and Text
+    /// XML importer - reads data and populates SPEC fields from properties
     /// </summary>
     public class XmlImporter
     {
@@ -28,8 +28,8 @@ namespace NovaAvaCostManagement
                     // Get costelement ID
                     var elementId = elementNode.Attribute("id")?.Value ?? "";
 
-                    // IMPORTANT: Get Name from <name> tag at costelement level (NOT from <text>!)
-                    var elementName = GetValue(elementNode, "name") ?? "";  // ← <name> tag, not <n>
+                    // Get costelement level data
+                    var elementName = GetValue(elementNode, "name") ?? "";
                     var elementDescription = GetValue(elementNode, "description") ?? "";
                     var elementType = ParseInt(GetValue(elementNode, "type"));
                     var elementProperties = GetValue(elementNode, "properties") ?? "";
@@ -37,25 +37,29 @@ namespace NovaAvaCostManagement
                     var elementOpenings = GetValue(elementNode, "openings") ?? "";
                     var elementCreated = ParseDateTime(GetValue(elementNode, "created"));
 
-                    // Get catalog information from cecatalogassigns
-                    string catalogName = "";
-                    string catalogType = "";
-                    string catalogItemName = "";  // NEW
-                    string catalogNumber = "";    // NEW
-
+                    // Get ALL catalog assignments (support up to 4)
+                    var catalogAssignments = new List<CatalogAssignment>();
                     var catalogAssignsNode = elementNode.Element("cecatalogassigns");
                     if (catalogAssignsNode != null)
                     {
-                        var catalogAssign = catalogAssignsNode.Element("cecatalogassign");
-                        if (catalogAssign != null)
+                        foreach (var catalogAssign in catalogAssignsNode.Elements("cecatalogassign"))
                         {
-                            catalogName = GetValue(catalogAssign, "catalogname") ?? "";
-                            catalogType = GetValue(catalogAssign, "catalogtype") ?? "";
-                            catalogItemName = GetValue(catalogAssign, "name") ?? "";      // NEW - reading <name>
-                            catalogNumber = GetValue(catalogAssign, "number") ?? "";      // NEW - reading <number>
+                            catalogAssignments.Add(new CatalogAssignment
+                            {
+                                CatalogName = GetValue(catalogAssign, "catalogname") ?? "",
+                                CatalogType = GetValue(catalogAssign, "catalogtype") ?? "",
+                                Name = GetValue(catalogAssign, "name") ?? "",
+                                Number = GetValue(catalogAssign, "number") ?? "",
+                                Reference = GetValue(catalogAssign, "reference") ?? ""
+                            });
                         }
                     }
 
+                    // Set legacy catalog fields from first assignment
+                    string catalogName = catalogAssignments.Count > 0 ? catalogAssignments[0].CatalogName : "";
+                    string catalogType = catalogAssignments.Count > 0 ? catalogAssignments[0].CatalogType : "";
+                    string catalogItemName = catalogAssignments.Count > 0 ? catalogAssignments[0].Name : "";
+                    string catalogNumber = catalogAssignments.Count > 0 ? catalogAssignments[0].Number : "";
 
                     // Find cecalculations node
                     var calculationsNode = elementNode.Element("cecalculations");
@@ -68,23 +72,32 @@ namespace NovaAvaCostManagement
                             var element = new CostElement();
 
                             // ============================================
-                            // COSTELEMENT LEVEL DATA (from parent node)
+                            // COSTELEMENT LEVEL DATA
                             // ============================================
                             element.Id = elementId;
-                            element.Name = elementName;  // ← From <name> at costelement level
+                            element.Name = elementName;
                             element.Description = elementDescription;
                             element.ElementType = elementType;
                             element.Properties = elementProperties;
                             element.Children = elementChildren;
                             element.Openings = elementOpenings;
                             element.Created = elementCreated;
-                            element.CatalogName = catalogName;  // ← From cecatalogassigns
-                            element.CatalogType = catalogType;  // ← From cecatalogassigns
-                            element.CatalogItemName = catalogItemName;  // NEW
-                            element.CatalogNumber = catalogNumber;      // NEW
+
+                            // Catalog assignments
+                            element.CatalogAssignments = catalogAssignments;
+                            element.CatalogName = catalogName;
+                            element.CatalogType = catalogType;
+                            element.CatalogItemName = catalogItemName;
+                            element.CatalogNumber = catalogNumber;
+
+                            // Parse SPEC fields from properties
+                            if (!string.IsNullOrEmpty(elementProperties))
+                            {
+                                element.ParseIfcParameters();
+                            }
 
                             // ============================================
-                            // CECALCULATION LEVEL DATA (from this node)
+                            // CECALCULATION LEVEL DATA
                             // ============================================
                             element.CalculationId = ParseInt(GetValue(calcNode, "id"));
                             element.Ident = GetValue(calcNode, "ident") ?? "";
@@ -96,9 +109,9 @@ namespace NovaAvaCostManagement
                             element.IsParentNode = element.ParentCalcId == 0;
                             element.TreeLevel = element.IsParentNode ? 0 : 1;
 
-                            // Core fields - Text is DIFFERENT from Name!
+                            // Core fields
                             element.BimKey = GetValue(calcNode, "bimkey") ?? "";
-                            element.Text = GetValue(calcNode, "text") ?? "";  // ← From <text> at cecalculation level (DIFFERENT!)
+                            element.Text = GetValue(calcNode, "text") ?? "";
                             element.LongText = GetValue(calcNode, "longtext") ?? "";
                             element.TextSys = GetValue(calcNode, "text_sys") ?? "";
                             element.TextKey = GetValue(calcNode, "text_key") ?? "";
@@ -106,12 +119,11 @@ namespace NovaAvaCostManagement
                             element.OutlineTextFree = GetValue(calcNode, "outlinetext_free") ?? "";
 
                             // Quantities and pricing
-                            var qtyValue = GetValue(calcNode, "qty");
-                            element.Qty = qtyValue == "DXQuantity" || qtyValue == "Count" ? 0 : ParseDecimal(qtyValue);
+                            element.Qty = GetValue(calcNode, "qty") ?? "";
                             element.QtyResult = ParseDecimal(GetValue(calcNode, "qty_result"));
                             element.Qu = GetValue(calcNode, "qu") ?? "";
                             element.Up = ParseDecimal(GetValue(calcNode, "up"));
-                            element.UpResult = ParseDecimal(GetValue(calcNode, "up_result"));  // ← Total price
+                            // UpResult is auto-calculated property
                             element.UpBkdn = ParseDecimal(GetValue(calcNode, "upbkdn"));
 
                             // Price components

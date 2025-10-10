@@ -1,43 +1,77 @@
-﻿// Add this new file: NovaAvaCostManagement/PropertiesSerializer.cs
-using System;
+﻿using System;
 using System.Text;
 
 namespace NovaAvaCostManagement
 {
     /// <summary>
-    /// Handles PHP-style serialization for properties field
+    /// Handles PHP-style serialization for properties field using SPEC parameters
     /// </summary>
     public static class PropertiesSerializer
     {
         /// <summary>
-        /// Serialize properties to PHP format with exact byte-length calculations
+        /// Serialize SPEC properties to PHP format with exact byte-length calculations
         /// </summary>
-        public static string SerializeProperties(string ifcType, string material, string dimension, string segmentType)
+        public static string SerializeSpecProperties(
+            string specFilter,
+            string specName,
+            string specSize,
+            string specType,
+            string specManufacturer,
+            string specMaterial)
         {
-            if (string.IsNullOrEmpty(ifcType))
+            var sb = new StringBuilder();
+
+            // Count non-empty fields
+            int fieldCount = 0;
+            if (!string.IsNullOrEmpty(specFilter)) fieldCount++;
+            if (!string.IsNullOrEmpty(specName)) fieldCount++;
+            if (!string.IsNullOrEmpty(specSize)) fieldCount++;
+            if (!string.IsNullOrEmpty(specType)) fieldCount++;
+            if (!string.IsNullOrEmpty(specManufacturer)) fieldCount++;
+            if (!string.IsNullOrEmpty(specMaterial)) fieldCount++;
+
+            if (fieldCount == 0)
                 return "";
 
-            var sb = new StringBuilder();
-            sb.Append("a:4:{");
+            sb.Append($"a:{fieldCount}:{{");
 
-            // IFC Type
-            AppendSerializedString(sb, "ifc_type", ifcType);
+            // Add each field if not empty
+            if (!string.IsNullOrEmpty(specName))
+                AppendSerializedString(sb, "DX.SPEC_Name", specName);
 
-            // Material with DX_Pset prefix
-            var materialKey = GetMaterialKey(ifcType);
-            AppendSerializedString(sb, materialKey, material);
+            if (!string.IsNullOrEmpty(specSize))
+                AppendSerializedString(sb, "DX.SPEC_Size", specSize);
 
-            // Dimension with DX_Pset prefix  
-            var dimensionKey = GetDimensionKey(ifcType);
-            AppendSerializedString(sb, dimensionKey, dimension);
+            if (!string.IsNullOrEmpty(specType))
+                AppendSerializedString(sb, "DX.SPEC_Type", specType);
 
-            // Segment Type with DX_Pset prefix
-            var segmentTypeKey = GetSegmentTypeKey(ifcType);
-            AppendSerializedString(sb, segmentTypeKey, segmentType);
+            if (!string.IsNullOrEmpty(specFilter))
+                AppendSerializedString(sb, "DX.SPEC_filter", specFilter);
+
+            if (!string.IsNullOrEmpty(specManufacturer))
+                AppendSerializedString(sb, "DX.SPEC_Manufacturer", specManufacturer);
+
+            if (!string.IsNullOrEmpty(specMaterial))
+                AppendSerializedString(sb, "DX.SPEC_Material", specMaterial);
 
             sb.Append("}");
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Serialize properties from CostElement
+        /// </summary>
+        public static string SerializeFromElement(CostElement element)
+        {
+            return SerializeSpecProperties(
+                element.SpecFilter ?? "",
+                element.SpecName ?? "",
+                element.SpecSize ?? "",
+                element.SpecType ?? "",
+                element.SpecManufacturer ?? "",
+                element.SpecMaterial ?? ""
+            );
         }
 
         /// <summary>
@@ -54,77 +88,18 @@ namespace NovaAvaCostManagement
         }
 
         /// <summary>
-        /// Get material key based on IFC type
-        /// </summary>
-        private static string GetMaterialKey(string ifcType)
-        {
-            switch (ifcType.ToUpper())
-            {
-                case "IFCPIPESEGMENT":
-                    return "DX_Pset_Pipe_Data.DX_Material";
-                case "IFCWALL":
-                    return "DX_Pset_Wall_Data.DX_Material";
-                case "IFCBEAM":
-                    return "DX_Pset_Beam_Data.DX_Material";
-                case "IFCSLAB":
-                    return "DX_Pset_Slab_Data.DX_Material";
-                case "IFCDOOR":
-                    return "DX_Pset_Door_Data.DX_Material";
-                default:
-                    return "DX_Pset_Element_Data.DX_Material";
-            }
-        }
-
-        /// <summary>
-        /// Get dimension key based on IFC type
-        /// </summary>
-        private static string GetDimensionKey(string ifcType)
-        {
-            switch (ifcType.ToUpper())
-            {
-                case "IFCPIPESEGMENT":
-                    return "DX_Pset_Pipe_Data.DX_Dimension";
-                case "IFCWALL":
-                    return "DX_Pset_Wall_Data.DX_Dimension";
-                case "IFCBEAM":
-                    return "DX_Pset_Beam_Data.DX_Dimension";
-                case "IFCSLAB":
-                    return "DX_Pset_Slab_Data.DX_Dimension";
-                case "IFCDOOR":
-                    return "DX_Pset_Door_Data.DX_Dimension";
-                default:
-                    return "DX_Pset_Element_Data.DX_Dimension";
-            }
-        }
-
-        /// <summary>
-        /// Get segment type key based on IFC type
-        /// </summary>
-        private static string GetSegmentTypeKey(string ifcType)
-        {
-            switch (ifcType.ToUpper())
-            {
-                case "IFCPIPESEGMENT":
-                    return "DX_Pset_Pipe_Data.DX_SegmentType";
-                case "IFCWALL":
-                    return "DX_Pset_Wall_Data.DX_WallType";
-                case "IFCBEAM":
-                    return "DX_Pset_Beam_Data.DX_BeamType";
-                case "IFCSLAB":
-                    return "DX_Pset_Slab_Data.DX_SlabType";
-                case "IFCDOOR":
-                    return "DX_Pset_Door_Data.DX_DoorType";
-                default:
-                    return "DX_Pset_Element_Data.DX_ElementType";
-            }
-        }
-
-        /// <summary>
         /// Test serialization with sample data
         /// </summary>
         public static string TestSerialization()
         {
-            return SerializeProperties("IFCPIPESEGMENT", "P235HTC1", "DN125", "DX_CarbonSteel_1.0345 - DIN EN 10216-2");
+            return SerializeSpecProperties(
+                "NO",
+                "3-Piece Ball Valve",
+                "1/4\"",
+                "H6800",
+                "HAM-LET",
+                "SS316L"
+            );
         }
     }
 }

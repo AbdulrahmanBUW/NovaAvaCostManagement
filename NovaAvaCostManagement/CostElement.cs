@@ -1,8 +1,26 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace NovaAvaCostManagement
 {
+    /// <summary>
+    /// Represents a single catalog assignment
+    /// </summary>
+    public class CatalogAssignment
+    {
+        public string CatalogName { get; set; } = "";
+        public string CatalogType { get; set; } = "";
+        public string Name { get; set; } = "";  // Item name
+        public string Number { get; set; } = "";
+        public string Reference { get; set; } = "";
+
+        public override string ToString()
+        {
+            return $"{Number} - {Name}";
+        }
+    }
+
     /// <summary>
     /// Cost element - stores ALL XML data but only specific fields are user-editable
     /// </summary>
@@ -12,29 +30,47 @@ namespace NovaAvaCostManagement
         // USER-EDITABLE FIELDS (shown in main grid)
         // ============================================
         public string Name { get; set; } = "";           // <name> - editable
+        public string Description { get; set; } = "";    // <description> - editable
         public string Children { get; set; } = "";       // <children> - editable
         public string Properties { get; set; } = "";     // <properties> - auto-generated, editable
-        public string CatalogName { get; set; } = "";    // <catalogname> - editable
-        public string CatalogType { get; set; } = "";    // <catalogtype> - editable
-        public string CatalogItemName { get; set; } = ""; // <name> from cecatalogassign - editable
-        public string CatalogNumber { get; set; } = "";   // <number> from cecatalogassign - editable
+
+        // SPEC fields - NOT exported to XML, used for Properties generation
+        public string SpecFilter { get; set; } = "";     // DX.SPEC_filter
+        public string SpecName { get; set; } = "";       // DX.SPEC_Name
+        public string SpecSize { get; set; } = "";       // DX.SPEC_Size
+        public string SpecType { get; set; } = "";       // DX.SPEC_Type
+        public string SpecManufacturer { get; set; } = ""; // DX.SPEC_Manufacturer
+        public string SpecMaterial { get; set; } = "";   // DX.SPEC_Material
+
+        // Catalog fields - support up to 4 catalogs
+        public List<CatalogAssignment> CatalogAssignments { get; set; } = new List<CatalogAssignment>();
+
+        // Legacy single catalog properties (for backward compatibility)
+        public string CatalogName { get; set; } = "";
+        public string CatalogType { get; set; } = "";
+        public string CatalogItemName { get; set; } = "";
+        public string CatalogNumber { get; set; } = "";
+
         public string Ident { get; set; } = "";          // <ident> - GUID, auto-generated
         public string Text { get; set; } = "";           // <text> - editable
         public string LongText { get; set; } = "";       // <longtext> - editable
+        public string Qty { get; set; } = "";            // <qty> - formula or value (string!)
         public decimal QtyResult { get; set; } = 0;      // <qty_result> - editable
-        public string Qu { get; set; } = "";             // <qu> - editable
-        public decimal Up { get; set; } = 0;             // <up> - editable (unit price)
+        public string Qu { get; set; } = "";             // <qu> - editable (Einheit)
+        public decimal Up { get; set; } = 0;             // <up> - editable (Price)
 
-        // Added missing compatibility property referenced elsewhere in project
-        // UpResult historically used in other files — keep it as a separate property
-        // so code referencing it continues to compile.
-        public decimal UpResult { get; set; } = 0;
+        // Auto-calculated total
+        public decimal UpResult
+        {
+            get => QtyResult * Up;
+            set { } // Keep setter for compatibility
+        }
 
         // ============================================
-        // READ-ONLY FIELDS (visible in edit form but greyed out, or completely hidden)
+        // READ-ONLY FIELDS (preserved but not shown in edit form)
         // ============================================
         public string Version { get; set; } = "2";
-        public string Id { get; set; } = "";             // Element ID - shown but read-only
+        public string Id { get; set; } = "";             // Element ID
         public int CalculationId { get; set; } = 0;
         public string Id2 { get; set; } = "";
         public string Id5 { get; set; } = "";
@@ -48,14 +84,11 @@ namespace NovaAvaCostManagement
         public string Title { get; set; } = "";
         public string Label { get; set; } = "";
         public string Type { get; set; } = "";
-        public string Description { get; set; } = "";
         public string BimKey { get; set; } = "";
         public string TextSys { get; set; } = "";
         public string TextKey { get; set; } = "";
         public string StlNo { get; set; } = "";
         public string OutlineTextFree { get; set; } = "";
-        public decimal Qty { get; set; } = 0;
-        // Note: Up and UpResult are now in editable section above
         public decimal UpBkdn { get; set; } = 0;
         public decimal UpComp1 { get; set; } = 0;
         public decimal UpComp2 { get; set; } = 0;
@@ -109,12 +142,13 @@ namespace NovaAvaCostManagement
         public Dictionary<string, object> AdditionalData { get; set; } = new Dictionary<string, object>();
 
         // ============================================
-        // IFC PARAMETERS (parsed from Properties field, used in edit form only)
+        // METHODS
         // ============================================
 
         /// <summary>
-        /// Parse IFC parameters from Properties string
-        /// Returns a dictionary of IFC parameter name -> value
+        /// Parse IFC/SPEC parameters from Properties string
+        /// Returns a dictionary of parameter name -> value
+        /// Populates SPEC fields automatically
         /// </summary>
         public Dictionary<string, string> ParseIfcParameters()
         {
@@ -125,7 +159,7 @@ namespace NovaAvaCostManagement
 
             try
             {
-                // Parse PHP serialized string: a:4:{s:8:"ifc_type";s:14:"IFCPIPEFITTING";...}
+                // Parse PHP serialized string: a:6:{s:12:"DX.SPEC_Name";s:18:"3-Piece Ball Valve";...}
                 var matches = System.Text.RegularExpressions.Regex.Matches(
                     Properties,
                     @"s:\d+:""([^""]+)"";s:\d+:""([^""]*)"";");
@@ -137,6 +171,29 @@ namespace NovaAvaCostManagement
                         string key = match.Groups[1].Value;
                         string value = match.Groups[2].Value;
                         result[key] = value;
+
+                        // Auto-populate SPEC fields
+                        switch (key)
+                        {
+                            case "DX.SPEC_filter":
+                                this.SpecFilter = value;
+                                break;
+                            case "DX.SPEC_Name":
+                                this.SpecName = value;
+                                break;
+                            case "DX.SPEC_Size":
+                                this.SpecSize = value;
+                                break;
+                            case "DX.SPEC_Type":
+                                this.SpecType = value;
+                                break;
+                            case "DX.SPEC_Manufacturer":
+                                this.SpecManufacturer = value;
+                                break;
+                            case "DX.SPEC_Material":
+                                this.SpecMaterial = value;
+                                break;
+                        }
                     }
                 }
             }
@@ -149,12 +206,14 @@ namespace NovaAvaCostManagement
         }
 
         /// <summary>
-        /// Get IFC Type from Properties (extracted)
+        /// Get catalog assignment by index (1-4)
         /// </summary>
-        public string GetIfcTypeFromProperties()
+        public string GetCatalog(int index)
         {
-            var ifcParams = ParseIfcParameters();
-            return ifcParams.ContainsKey("ifc_type") ? ifcParams["ifc_type"] : "";
+            if (index < 1 || index > 4 || CatalogAssignments.Count < index)
+                return "";
+
+            return CatalogAssignments[index - 1].ToString();
         }
 
         /// <summary>
@@ -164,21 +223,9 @@ namespace NovaAvaCostManagement
         {
             return new List<string>
             {
-                "Name", "CatalogName", "CatalogType", "CatalogItemName", "CatalogNumber",
-                "Children", "Properties", "Ident", "Text", "LongText", "QtyResult",
-                "Up", "UpResult", "Qu"
-            };
-        }
-
-        /// <summary>
-        /// Get list of read-only visible field names for edit form
-        /// </summary>
-        public static List<string> GetReadOnlyVisibleFields()
-        {
-            return new List<string>
-            {
-                "Id", "CalculationId", "ElementType", "BimKey",
-                "Order", "Sum", "Qty"
+                "Name", "Description", "Children", "Properties",
+                "SpecFilter", "SpecName", "SpecSize", "SpecType", "SpecManufacturer", "SpecMaterial",
+                "Ident", "Text", "LongText", "Qty", "QtyResult", "Up", "Qu"
             };
         }
 
@@ -219,19 +266,40 @@ namespace NovaAvaCostManagement
             {
                 // Editable fields
                 Name = this.Name,
+                Description = this.Description,
+                Children = this.Children,
+                Properties = this.Properties,
+                SpecFilter = this.SpecFilter,
+                SpecName = this.SpecName,
+                SpecSize = this.SpecSize,
+                SpecType = this.SpecType,
+                SpecManufacturer = this.SpecManufacturer,
+                SpecMaterial = this.SpecMaterial,
+                Ident = this.Ident,
+                Text = this.Text,
+                LongText = this.LongText,
+                Qty = this.Qty,
+                QtyResult = this.QtyResult,
+                Up = this.Up,
+                Qu = this.Qu,
+
+                // Catalog assignments
+                CatalogAssignments = new List<CatalogAssignment>(
+                    this.CatalogAssignments.Select(ca => new CatalogAssignment
+                    {
+                        CatalogName = ca.CatalogName,
+                        CatalogType = ca.CatalogType,
+                        Name = ca.Name,
+                        Number = ca.Number,
+                        Reference = ca.Reference
+                    })
+                ),
+
+                // Legacy catalog fields
                 CatalogName = this.CatalogName,
                 CatalogType = this.CatalogType,
                 CatalogItemName = this.CatalogItemName,
                 CatalogNumber = this.CatalogNumber,
-                Children = this.Children,
-                Properties = this.Properties,
-                Ident = this.Ident,
-                Text = this.Text,
-                LongText = this.LongText,
-                QtyResult = this.QtyResult,
-                Up = this.Up,
-                UpResult = this.UpResult,
-                Qu = this.Qu,
 
                 // All read-only fields (preserve all data)
                 Version = this.Version,
@@ -249,13 +317,11 @@ namespace NovaAvaCostManagement
                 Title = this.Title,
                 Label = this.Label,
                 Type = this.Type,
-                Description = this.Description,
                 BimKey = this.BimKey,
                 TextSys = this.TextSys,
                 TextKey = this.TextKey,
                 StlNo = this.StlNo,
                 OutlineTextFree = this.OutlineTextFree,
-                Qty = this.Qty,
                 UpBkdn = this.UpBkdn,
                 UpComp1 = this.UpComp1,
                 UpComp2 = this.UpComp2,
