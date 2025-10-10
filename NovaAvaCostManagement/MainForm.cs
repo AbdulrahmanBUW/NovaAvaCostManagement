@@ -157,6 +157,8 @@ namespace NovaAvaCostManagement
             AddColumn("colName", "Name", "Name", 250, false, false);
             AddColumn("colCatalogName", "CatalogName", "Catalog Name", 180, false, false);
             AddColumn("colCatalogType", "CatalogType", "Catalog Type", 150, false, false);
+            AddColumn("colCatalogItemName", "CatalogItemName", "Catalog Item Name", 180, false, false);  // NEW
+            AddColumn("colCatalogNumber", "CatalogNumber", "Catalog Number", 120, false, false);         // NEW
             AddColumn("colText", "Text", "Text", 200, false, false);
             AddColumn("colQtyResult", "QtyResult", "Qty", 80, false, false);
             AddColumn("colUp", "Up", "Unit Price", 100, false, false);
@@ -197,6 +199,7 @@ namespace NovaAvaCostManagement
 
             dataGridView.CellFormatting += DataGridView_CellFormatting;
         }
+
 
         private void AddColumn(string name, string dataPropertyName, string headerText, int width, bool readOnly, bool frozen)
         {
@@ -541,11 +544,17 @@ namespace NovaAvaCostManagement
                 case "CatalogName":
                     element.CatalogName = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
                     break;
-                case "Ident":
-                    element.Ident = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
                 case "CatalogType":
                     element.CatalogType = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "CatalogItemName":  // NEW
+                    element.CatalogItemName = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "CatalogNumber":    // NEW
+                    element.CatalogNumber = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
+                    break;
+                case "Ident":
+                    element.Ident = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
                     break;
                 case "Text":
                     element.Text = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";

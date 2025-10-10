@@ -14,6 +14,7 @@ namespace NovaAvaCostManagement
 
         // Editable controls
         private TextBox txtName, txtChildren, txtCatalogName, txtIdent, txtCatalogType;
+        private TextBox txtCatalogItemName, txtCatalogNumber;  // NEW FIELDS
         private TextBox txtText, txtLongText, txtQtyResult, txtQu, txtUp;
         private ComboBox cmbIfcType;
         private Label lblProperties;
@@ -56,10 +57,10 @@ namespace NovaAvaCostManagement
 
         private void InitializeCustomComponents()
         {
-            this.Size = new Size(700, 800);
+            this.Size = new Size(700, 850);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.Sizable;
-            this.MinimumSize = new Size(700, 600);
+            this.MinimumSize = new Size(700, 650);
 
             var mainContainer = new Panel
             {
@@ -71,14 +72,14 @@ namespace NovaAvaCostManagement
             scrollPanel = new Panel
             {
                 Location = new Point(0, 0),
-                Size = new Size(660, 650),
+                Size = new Size(660, 700),
                 AutoScroll = true,
                 BorderStyle = BorderStyle.FixedSingle
             };
             mainContainer.Controls.Add(scrollPanel);
 
             int yPos = 20;
-            const int labelWidth = 120;
+            const int labelWidth = 130;
             const int textBoxWidth = 500;
             const int spacing = 35;
 
@@ -105,8 +106,29 @@ namespace NovaAvaCostManagement
             // Children
             AddLabelAndTextBox("Children:", ref txtChildren, ref yPos, labelWidth, textBoxWidth, spacing);
 
+            // CATALOG SECTION
+            var lblCatalogSection = new Label
+            {
+                Text = "CATALOG INFORMATION",
+                Location = new Point(20, yPos),
+                Size = new Size(textBoxWidth, 25),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.DarkGreen
+            };
+            scrollPanel.Controls.Add(lblCatalogSection);
+            yPos += 30;
+
             // Catalog Name
             AddLabelAndTextBox("Catalog Name:", ref txtCatalogName, ref yPos, labelWidth, textBoxWidth, spacing);
+
+            // Catalog Type
+            AddLabelAndTextBox("Catalog Type:", ref txtCatalogType, ref yPos, labelWidth, textBoxWidth, spacing);
+
+            // Catalog Item Name (NEW)
+            AddLabelAndTextBox("Catalog Item Name:", ref txtCatalogItemName, ref yPos, labelWidth, textBoxWidth, spacing);
+
+            // Catalog Number (NEW)
+            AddLabelAndTextBox("Catalog Number:", ref txtCatalogNumber, ref yPos, labelWidth, textBoxWidth, spacing);
 
             // Ident (GUID) with generate button
             var lblIdent = new Label
@@ -119,7 +141,7 @@ namespace NovaAvaCostManagement
 
             txtIdent = new TextBox
             {
-                Location = new Point(150, yPos),
+                Location = new Point(160, yPos),
                 Size = new Size(300, 20),
                 ReadOnly = true,
                 BackColor = Color.LightYellow
@@ -129,15 +151,12 @@ namespace NovaAvaCostManagement
             btnGenerateGuid = new Button
             {
                 Text = "Generate",
-                Location = new Point(460, yPos),
+                Location = new Point(470, yPos),
                 Size = new Size(80, 23)
             };
             btnGenerateGuid.Click += BtnGenerateGuid_Click;
             scrollPanel.Controls.Add(btnGenerateGuid);
             yPos += spacing;
-
-            // Catalog Type
-            AddLabelAndTextBox("Catalog Type:", ref txtCatalogType, ref yPos, labelWidth, textBoxWidth, spacing);
 
             // Text
             AddLabelAndTextBox("Text *:", ref txtText, ref yPos, labelWidth, textBoxWidth, spacing);
@@ -153,7 +172,7 @@ namespace NovaAvaCostManagement
 
             txtLongText = new TextBox
             {
-                Location = new Point(150, yPos),
+                Location = new Point(160, yPos),
                 Size = new Size(textBoxWidth, 60),
                 Multiline = true,
                 MaxLength = 2000,
@@ -194,7 +213,7 @@ namespace NovaAvaCostManagement
 
             cmbIfcType = new ComboBox
             {
-                Location = new Point(150, yPos),
+                Location = new Point(160, yPos),
                 Size = new Size(textBoxWidth, 20),
                 DropDownStyle = ComboBoxStyle.DropDown
             };
@@ -225,7 +244,7 @@ namespace NovaAvaCostManagement
 
             lblProperties = new Label
             {
-                Location = new Point(150, yPos),
+                Location = new Point(160, yPos),
                 Size = new Size(textBoxWidth, 40),
                 BorderStyle = BorderStyle.FixedSingle,
                 BackColor = SystemColors.Control,
@@ -238,7 +257,7 @@ namespace NovaAvaCostManagement
             btnGenerateProperties = new Button
             {
                 Text = "Generate",
-                Location = new Point(150, yPos + 45),
+                Location = new Point(160, yPos + 45),
                 Size = new Size(80, 25)
             };
             btnGenerateProperties.Click += BtnGenerateProperties_Click;
@@ -325,7 +344,7 @@ namespace NovaAvaCostManagement
 
             textBox = new TextBox
             {
-                Location = new Point(150, yPos),
+                Location = new Point(160, yPos),
                 Size = new Size(textBoxWidth, 20),
                 ReadOnly = readOnly
             };
@@ -366,8 +385,10 @@ namespace NovaAvaCostManagement
             txtName.Text = CostElement.Name;
             txtChildren.Text = CostElement.Children;
             txtCatalogName.Text = CostElement.CatalogName;
-            txtIdent.Text = CostElement.Ident;
             txtCatalogType.Text = CostElement.CatalogType;
+            txtCatalogItemName.Text = CostElement.CatalogItemName;  // NEW
+            txtCatalogNumber.Text = CostElement.CatalogNumber;      // NEW
+            txtIdent.Text = CostElement.Ident;
             txtText.Text = CostElement.Text;
             txtLongText.Text = CostElement.LongText;
             txtQtyResult.Text = CostElement.QtyResult.ToString();
@@ -448,8 +469,10 @@ namespace NovaAvaCostManagement
             CostElement.Name = txtName.Text.Trim();
             CostElement.Children = txtChildren.Text.Trim();
             CostElement.CatalogName = txtCatalogName.Text.Trim();
-            CostElement.Ident = txtIdent.Text.Trim();
             CostElement.CatalogType = txtCatalogType.Text.Trim();
+            CostElement.CatalogItemName = txtCatalogItemName.Text.Trim();  // NEW
+            CostElement.CatalogNumber = txtCatalogNumber.Text.Trim();      // NEW
+            CostElement.Ident = txtIdent.Text.Trim();
             CostElement.Text = txtText.Text.Trim();
             CostElement.LongText = txtLongText.Text.Trim();
 

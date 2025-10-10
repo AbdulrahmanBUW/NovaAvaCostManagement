@@ -91,14 +91,17 @@ namespace NovaAvaCostManagement
                 WriteElement(writer, "created", parentElement.Created.ToString("yyyy-MM-ddTHH:mm:ss"));
 
                 // Write cecatalogassigns if catalog data exists
-                if (!string.IsNullOrEmpty(parentElement.CatalogName) || !string.IsNullOrEmpty(parentElement.CatalogType))
+                if (!string.IsNullOrEmpty(parentElement.CatalogName) ||
+                    !string.IsNullOrEmpty(parentElement.CatalogType) ||
+                    !string.IsNullOrEmpty(parentElement.CatalogItemName) ||
+                    !string.IsNullOrEmpty(parentElement.CatalogNumber))
                 {
                     writer.WriteStartElement("cecatalogassigns");
                     writer.WriteStartElement("cecatalogassign");
                     WriteElement(writer, "catalogname", parentElement.CatalogName);
                     WriteElement(writer, "catalogtype", parentElement.CatalogType);
-                    WriteElement(writer, "name", "");
-                    WriteElement(writer, "number", "");
+                    WriteElement(writer, "name", parentElement.CatalogItemName);      // NEW - writing <n>
+                    WriteElement(writer, "number", parentElement.CatalogNumber);      // NEW - writing <number>
                     WriteElement(writer, "reference", "");
                     writer.WriteEndElement(); // cecatalogassign
                     writer.WriteEndElement(); // cecatalogassigns

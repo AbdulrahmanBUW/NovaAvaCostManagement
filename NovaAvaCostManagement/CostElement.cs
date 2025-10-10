@@ -15,8 +15,10 @@ namespace NovaAvaCostManagement
         public string Children { get; set; } = "";       // <children> - editable
         public string Properties { get; set; } = "";     // <properties> - auto-generated, editable
         public string CatalogName { get; set; } = "";    // <catalogname> - editable
-        public string Ident { get; set; } = "";          // <ident> - GUID, auto-generated
         public string CatalogType { get; set; } = "";    // <catalogtype> - editable
+        public string CatalogItemName { get; set; } = ""; // <name> from cecatalogassign - editable
+        public string CatalogNumber { get; set; } = "";   // <number> from cecatalogassign - editable
+        public string Ident { get; set; } = "";          // <ident> - GUID, auto-generated
         public string Text { get; set; } = "";           // <text> - editable
         public string LongText { get; set; } = "";       // <longtext> - editable
         public decimal QtyResult { get; set; } = 0;      // <qty_result> - editable
@@ -162,8 +164,9 @@ namespace NovaAvaCostManagement
         {
             return new List<string>
             {
-                "Name", "CatalogName", "CatalogType", "Children", "Properties",
-                "Ident", "Text", "LongText", "QtyResult", "Up", "UpResult", "Qu"
+                "Name", "CatalogName", "CatalogType", "CatalogItemName", "CatalogNumber",
+                "Children", "Properties", "Ident", "Text", "LongText", "QtyResult",
+                "Up", "UpResult", "Qu"
             };
         }
 
@@ -218,6 +221,8 @@ namespace NovaAvaCostManagement
                 Name = this.Name,
                 CatalogName = this.CatalogName,
                 CatalogType = this.CatalogType,
+                CatalogItemName = this.CatalogItemName,
+                CatalogNumber = this.CatalogNumber,
                 Children = this.Children,
                 Properties = this.Properties,
                 Ident = this.Ident,

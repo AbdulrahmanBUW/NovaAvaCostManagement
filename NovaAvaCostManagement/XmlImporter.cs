@@ -40,6 +40,9 @@ namespace NovaAvaCostManagement
                     // Get catalog information from cecatalogassigns
                     string catalogName = "";
                     string catalogType = "";
+                    string catalogItemName = "";  // NEW
+                    string catalogNumber = "";    // NEW
+
                     var catalogAssignsNode = elementNode.Element("cecatalogassigns");
                     if (catalogAssignsNode != null)
                     {
@@ -48,8 +51,11 @@ namespace NovaAvaCostManagement
                         {
                             catalogName = GetValue(catalogAssign, "catalogname") ?? "";
                             catalogType = GetValue(catalogAssign, "catalogtype") ?? "";
+                            catalogItemName = GetValue(catalogAssign, "name") ?? "";      // NEW - reading <name>
+                            catalogNumber = GetValue(catalogAssign, "number") ?? "";      // NEW - reading <number>
                         }
                     }
+
 
                     // Find cecalculations node
                     var calculationsNode = elementNode.Element("cecalculations");
@@ -74,6 +80,8 @@ namespace NovaAvaCostManagement
                             element.Created = elementCreated;
                             element.CatalogName = catalogName;  // ← From cecatalogassigns
                             element.CatalogType = catalogType;  // ← From cecatalogassigns
+                            element.CatalogItemName = catalogItemName;  // NEW
+                            element.CatalogNumber = catalogNumber;      // NEW
 
                             // ============================================
                             // CECALCULATION LEVEL DATA (from this node)
