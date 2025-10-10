@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -7,21 +6,25 @@ namespace NovaAvaCostManagement
 {
     public partial class ElementEditForm : Form
     {
+        private const int FormWidth = 750;
+        private const int FormHeight = 900;
+        private const int MinFormWidth = 750;
+        private const int MinFormHeight = 700;
+        private const int LabelWidth = 150;
+        private const int TextBoxWidth = 500;
+        private const int FieldSpacing = 35;
+        private const int ScrollPanelWidth = 710;
+        private const int ScrollPanelHeight = 780;
+
         public CostElement CostElement { get; private set; }
         private int nextAvailableId;
 
-        // Editable controls
         private TextBox txtName, txtDescription, txtChildren;
         private TextBox txtIdent, txtText, txtLongText, txtQty, txtQtyResult, txtQu, txtUp;
-
-        // SPEC fields
         private TextBox txtSpecFilter, txtSpecName, txtSpecSize;
         private TextBox txtSpecType, txtSpecManufacturer, txtSpecMaterial;
-
-        // Properties display
         private Label lblProperties;
         private Button btnGenerateProperties, btnGenerateGuid;
-
         private Button btnOK, btnCancel;
         private Panel scrollPanel, buttonPanel;
 
@@ -34,9 +37,11 @@ namespace NovaAvaCostManagement
 
             if (element == null)
             {
-                CostElement = new CostElement();
-                CostElement.Id = nextAvailableId.ToString();
-                CostElement.Ident = Guid.NewGuid().ToString();
+                CostElement = new CostElement
+                {
+                    Id = nextAvailableId.ToString(),
+                    Ident = Guid.NewGuid().ToString()
+                };
                 this.Text = "Add New Element";
             }
             else
@@ -51,148 +56,136 @@ namespace NovaAvaCostManagement
 
         private void InitializeCustomComponents()
         {
-            this.Size = new Size(750, 900);
+            ConfigureFormProperties();
+            var mainContainer = CreateMainContainer();
+            scrollPanel = CreateScrollPanel();
+
+            int yPos = 20;
+            BuildFormSections(ref yPos);
+
+            scrollPanel.AutoScrollMinSize = new Size(0, yPos + 20);
+            mainContainer.Controls.Add(scrollPanel);
+
+            buttonPanel = CreateButtonPanel(mainContainer.Width);
+            mainContainer.Controls.Add(buttonPanel);
+
+            this.Controls.Add(mainContainer);
+            ConfigureFormButtons();
+        }
+
+        private void ConfigureFormProperties()
+        {
+            this.Size = new Size(FormWidth, FormHeight);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.Sizable;
-            this.MinimumSize = new Size(750, 700);
+            this.MinimumSize = new Size(MinFormWidth, MinFormHeight);
+        }
 
-            var mainContainer = new Panel
+        private Panel CreateMainContainer()
+        {
+            return new Panel
             {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(10)
             };
+        }
 
-            // Scrollable panel
-            scrollPanel = new Panel
+        private Panel CreateScrollPanel()
+        {
+            return new Panel
             {
                 Location = new Point(0, 0),
-                Size = new Size(710, 780),
+                Size = new Size(ScrollPanelWidth, ScrollPanelHeight),
                 AutoScroll = true,
                 BorderStyle = BorderStyle.FixedSingle
             };
-            mainContainer.Controls.Add(scrollPanel);
+        }
 
-            int yPos = 20;
-            const int labelWidth = 150;
-            const int textBoxWidth = 500;
-            const int spacing = 35;
+        private void BuildFormSections(ref int yPos)
+        {
+            AddBasicInformationSection(ref yPos);
+            AddSpecParametersSection(ref yPos);
+            AddCalculationSection(ref yPos);
+        }
 
-            // SECTION 1: BASIC INFORMATION
-            var lblBasicSection = new Label
+        private void AddBasicInformationSection(ref int yPos)
+        {
+            AddSectionHeader("BASIC INFORMATION", ref yPos, Color.DarkBlue);
+
+            AddReadOnlyField("Cost-ID:", CostElement.Id, ref yPos, 150);
+            AddLabelAndTextBox("Name *:", ref txtName, ref yPos);
+            AddLabelAndTextBox("Description:", ref txtDescription, ref yPos);
+        }
+
+        private void AddSpecParametersSection(ref int yPos)
+        {
+            AddSectionHeader("SPEC PARAMETERS (for Properties Generation)", ref yPos, Color.DarkGreen);
+
+            AddLabelAndTextBox("DX.SPEC_filter:", ref txtSpecFilter, ref yPos);
+            AddLabelAndTextBox("DX.SPEC_Name:", ref txtSpecName, ref yPos);
+            AddLabelAndTextBox("DX.SPEC_Size:", ref txtSpecSize, ref yPos);
+            AddLabelAndTextBox("DX.SPEC_Type:", ref txtSpecType, ref yPos);
+            AddLabelAndTextBox("DX.SPEC_Manufacturer:", ref txtSpecManufacturer, ref yPos);
+            AddLabelAndTextBox("DX.SPEC_Material:", ref txtSpecMaterial, ref yPos);
+
+            AddPropertiesDisplay(ref yPos);
+        }
+
+        private void AddCalculationSection(ref int yPos)
+        {
+            AddSectionHeader("CALCULATION INFORMATION", ref yPos, Color.DarkBlue);
+
+            AddCalculationIdFields(ref yPos);
+            AddIdentField(ref yPos);
+            AddLabelAndTextBox("Text *:", ref txtText, ref yPos);
+            AddLongTextField(ref yPos);
+            AddLabelAndTextBox("Quantity (Formula):", ref txtQty, ref yPos);
+            AddLabelAndTextBox("Qty Result *:", ref txtQtyResult, ref yPos);
+            AddLabelAndTextBox("Einheit (Unit):", ref txtQu, ref yPos);
+            AddLabelAndTextBox("Price (Up) *:", ref txtUp, ref yPos);
+            AddTotalField(ref yPos);
+            AddLabelAndTextBox("Children:", ref txtChildren, ref yPos);
+        }
+
+        private void AddSectionHeader(string text, ref int yPos, Color color)
+        {
+            var label = new Label
             {
-                Text = "BASIC INFORMATION",
+                Text = text,
                 Location = new Point(20, yPos),
-                Size = new Size(textBoxWidth, 25),
+                Size = new Size(TextBoxWidth + 50, 25),
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                ForeColor = Color.DarkBlue
+                ForeColor = color
             };
-            scrollPanel.Controls.Add(lblBasicSection);
+            scrollPanel.Controls.Add(label);
             yPos += 35;
+        }
 
-            // Cost-ID (Read-only display)
-            var lblCostId = new Label
+        private void AddReadOnlyField(string labelText, string value, ref int yPos, int fieldWidth)
+        {
+            var label = new Label
             {
-                Text = "Cost-ID:",
+                Text = labelText,
                 Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20),
+                Size = new Size(75, 20),
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold)
             };
-            scrollPanel.Controls.Add(lblCostId);
+            scrollPanel.Controls.Add(label);
 
-            var txtCostId = new TextBox
+            var textBox = new TextBox
             {
-                Location = new Point(180, yPos),
-                Size = new Size(150, 20),
-                Text = CostElement.Id,
+                Location = new Point(100, yPos),
+                Size = new Size(fieldWidth, 20),
+                Text = value,
                 ReadOnly = true,
                 BackColor = SystemColors.Control
             };
-            scrollPanel.Controls.Add(txtCostId);
-            yPos += spacing;
+            scrollPanel.Controls.Add(textBox);
+            yPos += FieldSpacing;
+        }
 
-            // Name
-            AddLabelAndTextBox("Name *:", ref txtName, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Description
-            AddLabelAndTextBox("Description:", ref txtDescription, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // SECTION 2: SPEC PARAMETERS
-            var lblSpecSection = new Label
-            {
-                Text = "SPEC PARAMETERS (for Properties Generation)",
-                Location = new Point(20, yPos),
-                Size = new Size(textBoxWidth + 50, 25),
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                ForeColor = Color.DarkGreen
-            };
-            scrollPanel.Controls.Add(lblSpecSection);
-            yPos += 35;
-
-            // SPEC Filter
-            AddLabelAndTextBox("DX.SPEC_filter:", ref txtSpecFilter, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // SPEC Name
-            AddLabelAndTextBox("DX.SPEC_Name:", ref txtSpecName, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // SPEC Size
-            AddLabelAndTextBox("DX.SPEC_Size:", ref txtSpecSize, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // SPEC Type
-            AddLabelAndTextBox("DX.SPEC_Type:", ref txtSpecType, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // SPEC Manufacturer
-            AddLabelAndTextBox("DX.SPEC_Manufacturer:", ref txtSpecManufacturer, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // SPEC Material
-            AddLabelAndTextBox("DX.SPEC_Material:", ref txtSpecMaterial, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Properties (read-only display with generate button)
-            var lblPropertiesLabel = new Label
-            {
-                Text = "Properties (Generated):",
-                Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20)
-            };
-            scrollPanel.Controls.Add(lblPropertiesLabel);
-
-            lblProperties = new Label
-            {
-                Location = new Point(180, yPos),
-                Size = new Size(textBoxWidth, 60),
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = SystemColors.Control,
-                Font = new Font("Consolas", 8F),
-                ForeColor = Color.Gray,
-                Text = "(Click Generate to create properties)"
-            };
-            scrollPanel.Controls.Add(lblProperties);
-
-            btnGenerateProperties = new Button
-            {
-                Text = "Generate Properties",
-                Location = new Point(180, yPos + 65),
-                Size = new Size(150, 30),
-                BackColor = Color.FromArgb(0, 120, 215),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
-            };
-            btnGenerateProperties.Click += BtnGenerateProperties_Click;
-            scrollPanel.Controls.Add(btnGenerateProperties);
-            yPos += 105;
-
-            // SECTION 3: CALCULATION FIELDS
-            var lblCalcSection = new Label
-            {
-                Text = "CALCULATION INFORMATION",
-                Location = new Point(20, yPos),
-                Size = new Size(textBoxWidth, 25),
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                ForeColor = Color.DarkBlue
-            };
-            scrollPanel.Controls.Add(lblCalcSection);
-            yPos += 35;
-
-            // Line-ID and Order (Read-only display)
+        private void AddCalculationIdFields(ref int yPos)
+        {
             var lblLineId = new Label
             {
                 Text = "Line-ID:",
@@ -230,16 +223,18 @@ namespace NovaAvaCostManagement
                 BackColor = SystemColors.Control
             };
             scrollPanel.Controls.Add(txtOrder);
-            yPos += spacing;
+            yPos += FieldSpacing;
+        }
 
-            // Ident (GUID) with generate button
-            var lblIdent = new Label
+        private void AddIdentField(ref int yPos)
+        {
+            var label = new Label
             {
                 Text = "GUID-Ident *:",
                 Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20)
+                Size = new Size(LabelWidth, 20)
             };
-            scrollPanel.Controls.Add(lblIdent);
+            scrollPanel.Controls.Add(label);
 
             txtIdent = new TextBox
             {
@@ -258,52 +253,41 @@ namespace NovaAvaCostManagement
             };
             btnGenerateGuid.Click += BtnGenerateGuid_Click;
             scrollPanel.Controls.Add(btnGenerateGuid);
-            yPos += spacing;
+            yPos += FieldSpacing;
+        }
 
-            // Text
-            AddLabelAndTextBox("Text *:", ref txtText, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Long Text (multiline)
-            var lblLongText = new Label
+        private void AddLongTextField(ref int yPos)
+        {
+            var label = new Label
             {
                 Text = "Long Text:",
                 Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20)
+                Size = new Size(LabelWidth, 20)
             };
-            scrollPanel.Controls.Add(lblLongText);
+            scrollPanel.Controls.Add(label);
 
             txtLongText = new TextBox
             {
                 Location = new Point(180, yPos),
-                Size = new Size(textBoxWidth, 60),
+                Size = new Size(TextBoxWidth, 60),
                 Multiline = true,
                 MaxLength = 4000,
                 ScrollBars = ScrollBars.Vertical
             };
             scrollPanel.Controls.Add(txtLongText);
             yPos += 70;
+        }
 
-            // Quantity (formula)
-            AddLabelAndTextBox("Quantity (Formula):", ref txtQty, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Quantity Result
-            AddLabelAndTextBox("Qty Result *:", ref txtQtyResult, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Unit (Einheit)
-            AddLabelAndTextBox("Einheit (Unit):", ref txtQu, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Price (Unit Price)
-            AddLabelAndTextBox("Price (Up) *:", ref txtUp, ref yPos, labelWidth, textBoxWidth, spacing);
-
-            // Total (Auto-calculated - read-only display)
-            var lblTotal = new Label
+        private void AddTotalField(ref int yPos)
+        {
+            var label = new Label
             {
                 Text = "Total (Auto-calc):",
                 Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20),
+                Size = new Size(LabelWidth, 20),
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold)
             };
-            scrollPanel.Controls.Add(lblTotal);
+            scrollPanel.Controls.Add(label);
 
             var txtTotal = new TextBox
             {
@@ -315,15 +299,75 @@ namespace NovaAvaCostManagement
                 Text = CostElement.UpResult.ToString("F3")
             };
             scrollPanel.Controls.Add(txtTotal);
-            yPos += spacing;
+            yPos += FieldSpacing;
+        }
 
-            // Children
-            AddLabelAndTextBox("Children:", ref txtChildren, ref yPos, labelWidth, textBoxWidth, spacing);
+        private void AddPropertiesDisplay(ref int yPos)
+        {
+            var label = new Label
+            {
+                Text = "Properties (Generated):",
+                Location = new Point(20, yPos),
+                Size = new Size(LabelWidth, 20)
+            };
+            scrollPanel.Controls.Add(label);
 
-            scrollPanel.AutoScrollMinSize = new Size(0, yPos + 20);
+            lblProperties = new Label
+            {
+                Location = new Point(180, yPos),
+                Size = new Size(TextBoxWidth, 60),
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = SystemColors.Control,
+                Font = new Font("Consolas", 8F),
+                ForeColor = Color.Gray,
+                Text = "(Click Generate to create properties)"
+            };
+            scrollPanel.Controls.Add(lblProperties);
 
-            // BUTTON PANEL
-            buttonPanel = new Panel
+            btnGenerateProperties = new Button
+            {
+                Text = "Generate Properties",
+                Location = new Point(180, yPos + 65),
+                Size = new Size(150, 30),
+                BackColor = Color.FromArgb(0, 120, 215),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            btnGenerateProperties.Click += BtnGenerateProperties_Click;
+            scrollPanel.Controls.Add(btnGenerateProperties);
+            yPos += 105;
+        }
+
+        private void AddLabelAndTextBox(string labelText, ref TextBox textBox, ref int yPos,
+            bool readOnly = false)
+        {
+            var label = new Label
+            {
+                Text = labelText,
+                Location = new Point(20, yPos),
+                Size = new Size(LabelWidth, 20)
+            };
+            scrollPanel.Controls.Add(label);
+
+            textBox = new TextBox
+            {
+                Location = new Point(180, yPos),
+                Size = new Size(TextBoxWidth, 20),
+                ReadOnly = readOnly
+            };
+
+            if (readOnly)
+            {
+                textBox.BackColor = SystemColors.Control;
+            }
+
+            scrollPanel.Controls.Add(textBox);
+            yPos += FieldSpacing;
+        }
+
+        private Panel CreateButtonPanel(int containerWidth)
+        {
+            var panel = new Panel
             {
                 Dock = DockStyle.Bottom,
                 Height = 60,
@@ -334,7 +378,7 @@ namespace NovaAvaCostManagement
             {
                 Text = "Save",
                 Size = new Size(100, 35),
-                Location = new Point(mainContainer.Width - 220, 15),
+                Location = new Point(containerWidth - 220, 15),
                 Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 BackColor = Color.FromArgb(0, 120, 215),
@@ -342,50 +386,25 @@ namespace NovaAvaCostManagement
                 FlatStyle = FlatStyle.Flat
             };
             btnOK.Click += BtnOK_Click;
-            buttonPanel.Controls.Add(btnOK);
+            panel.Controls.Add(btnOK);
 
             btnCancel = new Button
             {
                 Text = "Cancel",
                 Size = new Size(100, 35),
-                Location = new Point(mainContainer.Width - 110, 15),
+                Location = new Point(containerWidth - 110, 15),
                 Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
                 DialogResult = DialogResult.Cancel
             };
-            buttonPanel.Controls.Add(btnCancel);
+            panel.Controls.Add(btnCancel);
 
-            mainContainer.Controls.Add(buttonPanel);
-            this.Controls.Add(mainContainer);
-
-            this.AcceptButton = btnOK;
-            this.CancelButton = btnCancel;
+            return panel;
         }
 
-        private void AddLabelAndTextBox(string labelText, ref TextBox textBox, ref int yPos,
-            int labelWidth, int textBoxWidth, int spacing, bool readOnly = false)
+        private void ConfigureFormButtons()
         {
-            var label = new Label
-            {
-                Text = labelText,
-                Location = new Point(20, yPos),
-                Size = new Size(labelWidth, 20)
-            };
-            scrollPanel.Controls.Add(label);
-
-            textBox = new TextBox
-            {
-                Location = new Point(180, yPos),
-                Size = new Size(textBoxWidth, 20),
-                ReadOnly = readOnly
-            };
-
-            if (readOnly)
-            {
-                textBox.BackColor = SystemColors.Control;
-            }
-
-            scrollPanel.Controls.Add(textBox);
-            yPos += spacing;
+            this.AcceptButton = btnOK;
+            this.CancelButton = btnCancel;
         }
 
         private void LoadElementData()
@@ -394,7 +413,6 @@ namespace NovaAvaCostManagement
             txtDescription.Text = CostElement.Description;
             txtChildren.Text = CostElement.Children;
 
-            // Parse existing properties to populate SPEC fields
             if (!string.IsNullOrEmpty(CostElement.Properties))
             {
                 CostElement.ParseIfcParameters();
@@ -472,17 +490,22 @@ namespace NovaAvaCostManagement
             if (!ValidateInput())
                 return;
 
+            SaveElementData();
+            this.DialogResult = DialogResult.OK;
+            this.Close();
+        }
+
+        private void SaveElementData()
+        {
             CostElement.Name = txtName.Text.Trim();
             CostElement.Description = txtDescription.Text.Trim();
             CostElement.Children = txtChildren.Text.Trim();
-
             CostElement.SpecFilter = txtSpecFilter.Text.Trim();
             CostElement.SpecName = txtSpecName.Text.Trim();
             CostElement.SpecSize = txtSpecSize.Text.Trim();
             CostElement.SpecType = txtSpecType.Text.Trim();
             CostElement.SpecManufacturer = txtSpecManufacturer.Text.Trim();
             CostElement.SpecMaterial = txtSpecMaterial.Text.Trim();
-
             CostElement.Ident = txtIdent.Text.Trim();
             CostElement.Text = txtText.Text.Trim();
             CostElement.LongText = txtLongText.Text.Trim();
@@ -495,9 +518,6 @@ namespace NovaAvaCostManagement
                 CostElement.Up = up;
 
             CostElement.Qu = txtQu.Text.Trim();
-
-            this.DialogResult = DialogResult.OK;
-            this.Close();
         }
 
         private bool ValidateInput()
@@ -525,34 +545,31 @@ namespace NovaAvaCostManagement
                 return false;
             }
 
-            if (!string.IsNullOrWhiteSpace(txtQtyResult.Text))
+            if (!ValidateNumericField(txtQtyResult.Text, "Quantity"))
+                return false;
+
+            if (!ValidateNumericField(txtUp.Text, "Price"))
+                return false;
+
+            return true;
+        }
+
+        private bool ValidateNumericField(string value, string fieldName)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
             {
-                if (!decimal.TryParse(txtQtyResult.Text, out decimal qty) || qty < 0)
+                if (!decimal.TryParse(value, out decimal result) || result < 0)
                 {
-                    MessageBox.Show("Quantity must be a non-negative number.", "Validation Error",
+                    MessageBox.Show($"{fieldName} must be a non-negative number.", "Validation Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    txtQtyResult.Focus();
                     return false;
                 }
             }
-
-            if (!string.IsNullOrWhiteSpace(txtUp.Text))
-            {
-                if (!decimal.TryParse(txtUp.Text, out decimal up) || up < 0)
-                {
-                    MessageBox.Show("Price must be a non-negative number.", "Validation Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    txtUp.Focus();
-                    return false;
-                }
-            }
-
             return true;
         }
 
         private void ElementEditForm_Load_2(object sender, EventArgs e)
         {
-            // Required for designer
         }
     }
 }

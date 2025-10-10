@@ -6,9 +6,6 @@ using System.Xml.Linq;
 
 namespace NovaAvaCostManagement
 {
-    /// <summary>
-    /// XML importer - reads data and populates SPEC fields from properties
-    /// </summary>
     public class XmlImporter
     {
         public static List<CostElement> ImportFromXml(string filePath)
@@ -18,150 +15,12 @@ namespace NovaAvaCostManagement
             try
             {
                 var doc = XDocument.Load(filePath);
-
-                // Find ALL costelement nodes
                 var costElementNodes = doc.Descendants()
                     .Where(x => x.Name.LocalName.ToLower() == "costelement");
 
                 foreach (var elementNode in costElementNodes)
                 {
-                    // Get costelement ID
-                    var elementId = elementNode.Attribute("id")?.Value ?? "";
-
-                    // Get costelement level data
-                    var elementName = GetValue(elementNode, "name") ?? "";
-                    var elementDescription = GetValue(elementNode, "description") ?? "";
-                    var elementType = ParseInt(GetValue(elementNode, "type"));
-                    var elementProperties = GetValue(elementNode, "properties") ?? "";
-                    var elementChildren = GetValue(elementNode, "children") ?? "";
-                    var elementOpenings = GetValue(elementNode, "openings") ?? "";
-                    var elementCreated = ParseDateTime(GetValue(elementNode, "created"));
-
-                    // Get ALL catalog assignments (support up to 4)
-                    var catalogAssignments = new List<CatalogAssignment>();
-                    var catalogAssignsNode = elementNode.Element("cecatalogassigns");
-                    if (catalogAssignsNode != null)
-                    {
-                        foreach (var catalogAssign in catalogAssignsNode.Elements("cecatalogassign"))
-                        {
-                            catalogAssignments.Add(new CatalogAssignment
-                            {
-                                CatalogName = GetValue(catalogAssign, "catalogname") ?? "",
-                                CatalogType = GetValue(catalogAssign, "catalogtype") ?? "",
-                                Name = GetValue(catalogAssign, "name") ?? "",
-                                Number = GetValue(catalogAssign, "number") ?? "",
-                                Reference = GetValue(catalogAssign, "reference") ?? ""
-                            });
-                        }
-                    }
-
-                    // Set legacy catalog fields from first assignment
-                    string catalogName = catalogAssignments.Count > 0 ? catalogAssignments[0].CatalogName : "";
-                    string catalogType = catalogAssignments.Count > 0 ? catalogAssignments[0].CatalogType : "";
-                    string catalogItemName = catalogAssignments.Count > 0 ? catalogAssignments[0].Name : "";
-                    string catalogNumber = catalogAssignments.Count > 0 ? catalogAssignments[0].Number : "";
-
-                    // Find cecalculations node
-                    var calculationsNode = elementNode.Element("cecalculations");
-                    if (calculationsNode != null)
-                    {
-                        var calculations = calculationsNode.Elements("cecalculation");
-
-                        foreach (var calcNode in calculations)
-                        {
-                            var element = new CostElement();
-
-                            // ============================================
-                            // COSTELEMENT LEVEL DATA
-                            // ============================================
-                            element.Id = elementId;
-                            element.Name = elementName;
-                            element.Description = elementDescription;
-                            element.ElementType = elementType;
-                            element.Properties = elementProperties;
-                            element.Children = elementChildren;
-                            element.Openings = elementOpenings;
-                            element.Created = elementCreated;
-
-                            // Catalog assignments
-                            element.CatalogAssignments = catalogAssignments;
-                            element.CatalogName = catalogName;
-                            element.CatalogType = catalogType;
-                            element.CatalogItemName = catalogItemName;
-                            element.CatalogNumber = catalogNumber;
-
-                            // Parse SPEC fields from properties
-                            if (!string.IsNullOrEmpty(elementProperties))
-                            {
-                                element.ParseIfcParameters();
-                            }
-
-                            // ============================================
-                            // CECALCULATION LEVEL DATA
-                            // ============================================
-                            element.CalculationId = ParseInt(GetValue(calcNode, "id"));
-                            element.Ident = GetValue(calcNode, "ident") ?? "";
-                            element.Id2 = element.Ident;
-
-                            // Parent/hierarchy
-                            element.ParentCalcId = ParseInt(GetValue(calcNode, "parent"));
-                            element.Order = ParseInt(GetValue(calcNode, "order"));
-                            element.IsParentNode = element.ParentCalcId == 0;
-                            element.TreeLevel = element.IsParentNode ? 0 : 1;
-
-                            // Core fields
-                            element.BimKey = GetValue(calcNode, "bimkey") ?? "";
-                            element.Text = GetValue(calcNode, "text") ?? "";
-                            element.LongText = GetValue(calcNode, "longtext") ?? "";
-                            element.TextSys = GetValue(calcNode, "text_sys") ?? "";
-                            element.TextKey = GetValue(calcNode, "text_key") ?? "";
-                            element.StlNo = GetValue(calcNode, "stlno") ?? "";
-                            element.OutlineTextFree = GetValue(calcNode, "outlinetext_free") ?? "";
-
-                            // Quantities and pricing
-                            element.Qty = GetValue(calcNode, "qty") ?? "";
-                            element.QtyResult = ParseDecimal(GetValue(calcNode, "qty_result"));
-                            element.Qu = GetValue(calcNode, "qu") ?? "";
-                            element.Up = ParseDecimal(GetValue(calcNode, "up"));
-                            // UpResult is auto-calculated property
-                            element.UpBkdn = ParseDecimal(GetValue(calcNode, "upbkdn"));
-
-                            // Price components
-                            element.UpComp1 = ParseDecimal(GetValue(calcNode, "upcomp1"));
-                            element.UpComp2 = ParseDecimal(GetValue(calcNode, "upcomp2"));
-                            element.UpComp3 = ParseDecimal(GetValue(calcNode, "upcomp3"));
-                            element.UpComp4 = ParseDecimal(GetValue(calcNode, "upcomp4"));
-                            element.UpComp5 = ParseDecimal(GetValue(calcNode, "upcomp5"));
-                            element.UpComp6 = ParseDecimal(GetValue(calcNode, "upcomp6"));
-
-                            element.TimeQu = GetValue(calcNode, "timequ") ?? "";
-                            element.It = ParseDecimal(GetValue(calcNode, "it"));
-                            element.Vat = ParseDecimal(GetValue(calcNode, "vat"));
-                            element.VatValue = ParseDecimal(GetValue(calcNode, "vatvalue"));
-                            element.Tax = ParseDecimal(GetValue(calcNode, "tax"));
-                            element.TaxValue = ParseDecimal(GetValue(calcNode, "taxvalue"));
-                            element.ItGross = ParseDecimal(GetValue(calcNode, "itgross"));
-                            element.Sum = ParseDecimal(GetValue(calcNode, "sum"));
-
-                            // VOB fields
-                            element.Vob = GetValue(calcNode, "vob") ?? "";
-                            element.VobFormula = GetValue(calcNode, "vob_formula") ?? "";
-                            element.VobCondition = GetValue(calcNode, "vob_condition") ?? "";
-                            element.VobType = GetValue(calcNode, "vob_type") ?? "";
-                            element.VobFactor = ParseDecimal(GetValue(calcNode, "vob_factor"));
-
-                            // Additional fields
-                            element.On = GetValue(calcNode, "on") ?? "";
-                            element.PercTotal = ParseDecimal(GetValue(calcNode, "perctotal"));
-                            element.Marked = GetValue(calcNode, "marked") == "1";
-                            element.PercMarked = ParseDecimal(GetValue(calcNode, "percmarked"));
-                            element.ProcUnit = GetValue(calcNode, "procunit") ?? "";
-                            element.Color = GetValue(calcNode, "color") ?? "";
-                            element.Note = GetValue(calcNode, "note") ?? "";
-
-                            elements.Add(element);
-                        }
-                    }
+                    ProcessCostElement(elementNode, elements);
                 }
             }
             catch (Exception ex)
@@ -172,12 +31,150 @@ namespace NovaAvaCostManagement
             return elements;
         }
 
+        private static void ProcessCostElement(XElement elementNode, List<CostElement> elements)
+        {
+            var elementId = elementNode.Attribute("id")?.Value ?? "";
+            var costElementData = ExtractCostElementData(elementNode);
+            var catalogAssignments = ExtractCatalogAssignments(elementNode);
+
+            var calculationsNode = elementNode.Element("cecalculations");
+            if (calculationsNode != null)
+            {
+                var calculations = calculationsNode.Elements("cecalculation");
+
+                foreach (var calcNode in calculations)
+                {
+                    var element = CreateCostElement(elementId, costElementData, catalogAssignments, calcNode);
+                    elements.Add(element);
+                }
+            }
+        }
+
+        private static CostElementData ExtractCostElementData(XElement elementNode)
+        {
+            return new CostElementData
+            {
+                Name = GetValue(elementNode, "name") ?? "",
+                Description = GetValue(elementNode, "description") ?? "",
+                ElementType = ParseInt(GetValue(elementNode, "type")),
+                Properties = GetValue(elementNode, "properties") ?? "",
+                Children = GetValue(elementNode, "children") ?? "",
+                Openings = GetValue(elementNode, "openings") ?? "",
+                Created = ParseDateTime(GetValue(elementNode, "created"))
+            };
+        }
+
+        private static List<CatalogAssignment> ExtractCatalogAssignments(XElement elementNode)
+        {
+            var catalogAssignments = new List<CatalogAssignment>();
+            var catalogAssignsNode = elementNode.Element("cecatalogassigns");
+
+            if (catalogAssignsNode != null)
+            {
+                foreach (var catalogAssign in catalogAssignsNode.Elements("cecatalogassign"))
+                {
+                    catalogAssignments.Add(new CatalogAssignment
+                    {
+                        CatalogName = GetValue(catalogAssign, "catalogname") ?? "",
+                        CatalogType = GetValue(catalogAssign, "catalogtype") ?? "",
+                        Name = GetValue(catalogAssign, "name") ?? "",
+                        Number = GetValue(catalogAssign, "number") ?? "",
+                        Reference = GetValue(catalogAssign, "reference") ?? ""
+                    });
+                }
+            }
+
+            return catalogAssignments;
+        }
+
+        private static CostElement CreateCostElement(string elementId, CostElementData data,
+            List<CatalogAssignment> catalogAssignments, XElement calcNode)
+        {
+            var element = new CostElement
+            {
+                Id = elementId,
+                Name = data.Name,
+                Description = data.Description,
+                ElementType = data.ElementType,
+                Properties = data.Properties,
+                Children = data.Children,
+                Openings = data.Openings,
+                Created = data.Created,
+                CatalogAssignments = catalogAssignments
+            };
+
+            if (catalogAssignments.Count > 0)
+            {
+                element.CatalogName = catalogAssignments[0].CatalogName;
+                element.CatalogType = catalogAssignments[0].CatalogType;
+                element.CatalogItemName = catalogAssignments[0].Name;
+                element.CatalogNumber = catalogAssignments[0].Number;
+            }
+
+            if (!string.IsNullOrEmpty(data.Properties))
+            {
+                element.ParseIfcParameters();
+            }
+
+            PopulateCalculationData(element, calcNode);
+
+            return element;
+        }
+
+        private static void PopulateCalculationData(CostElement element, XElement calcNode)
+        {
+            element.CalculationId = ParseInt(GetValue(calcNode, "id"));
+            element.Ident = GetValue(calcNode, "ident") ?? "";
+            element.Id2 = element.Ident;
+            element.ParentCalcId = ParseInt(GetValue(calcNode, "parent"));
+            element.Order = ParseInt(GetValue(calcNode, "order"));
+            element.IsParentNode = element.ParentCalcId == 0;
+            element.TreeLevel = element.IsParentNode ? 0 : 1;
+            element.BimKey = GetValue(calcNode, "bimkey") ?? "";
+            element.Text = GetValue(calcNode, "text") ?? "";
+            element.LongText = GetValue(calcNode, "longtext") ?? "";
+            element.TextSys = GetValue(calcNode, "text_sys") ?? "";
+            element.TextKey = GetValue(calcNode, "text_key") ?? "";
+            element.StlNo = GetValue(calcNode, "stlno") ?? "";
+            element.OutlineTextFree = GetValue(calcNode, "outlinetext_free") ?? "";
+            element.Qty = GetValue(calcNode, "qty") ?? "";
+            element.QtyResult = ParseDecimal(GetValue(calcNode, "qty_result"));
+            element.Qu = GetValue(calcNode, "qu") ?? "";
+            element.Up = ParseDecimal(GetValue(calcNode, "up"));
+            element.UpBkdn = ParseDecimal(GetValue(calcNode, "upbkdn"));
+            element.UpComp1 = ParseDecimal(GetValue(calcNode, "upcomp1"));
+            element.UpComp2 = ParseDecimal(GetValue(calcNode, "upcomp2"));
+            element.UpComp3 = ParseDecimal(GetValue(calcNode, "upcomp3"));
+            element.UpComp4 = ParseDecimal(GetValue(calcNode, "upcomp4"));
+            element.UpComp5 = ParseDecimal(GetValue(calcNode, "upcomp5"));
+            element.UpComp6 = ParseDecimal(GetValue(calcNode, "upcomp6"));
+            element.TimeQu = GetValue(calcNode, "timequ") ?? "";
+            element.It = ParseDecimal(GetValue(calcNode, "it"));
+            element.Vat = ParseDecimal(GetValue(calcNode, "vat"));
+            element.VatValue = ParseDecimal(GetValue(calcNode, "vatvalue"));
+            element.Tax = ParseDecimal(GetValue(calcNode, "tax"));
+            element.TaxValue = ParseDecimal(GetValue(calcNode, "taxvalue"));
+            element.ItGross = ParseDecimal(GetValue(calcNode, "itgross"));
+            element.Sum = ParseDecimal(GetValue(calcNode, "sum"));
+            element.Vob = GetValue(calcNode, "vob") ?? "";
+            element.VobFormula = GetValue(calcNode, "vob_formula") ?? "";
+            element.VobCondition = GetValue(calcNode, "vob_condition") ?? "";
+            element.VobType = GetValue(calcNode, "vob_type") ?? "";
+            element.VobFactor = ParseDecimal(GetValue(calcNode, "vob_factor"));
+            element.On = GetValue(calcNode, "on") ?? "";
+            element.PercTotal = ParseDecimal(GetValue(calcNode, "perctotal"));
+            element.Marked = GetValue(calcNode, "marked") == "1";
+            element.PercMarked = ParseDecimal(GetValue(calcNode, "percmarked"));
+            element.ProcUnit = GetValue(calcNode, "procunit") ?? "";
+            element.Color = GetValue(calcNode, "color") ?? "";
+            element.Note = GetValue(calcNode, "note") ?? "";
+        }
+
         private static string GetValue(XElement parent, string elementName)
         {
             var element = parent.Element(elementName);
             if (element == null) return null;
 
-            // Handle CDATA
             var cdata = element.Nodes().OfType<XCData>().FirstOrDefault();
             if (cdata != null)
                 return cdata.Value?.Trim();
@@ -201,7 +198,6 @@ namespace NovaAvaCostManagement
             if (string.IsNullOrWhiteSpace(value))
                 return 0m;
 
-            // Handle both comma and period
             value = value.Replace(',', '.');
 
             if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result))
@@ -219,6 +215,17 @@ namespace NovaAvaCostManagement
                 return result;
 
             return DateTime.Now;
+        }
+
+        private class CostElementData
+        {
+            public string Name { get; set; }
+            public string Description { get; set; }
+            public int ElementType { get; set; }
+            public string Properties { get; set; }
+            public string Children { get; set; }
+            public string Openings { get; set; }
+            public DateTime Created { get; set; }
         }
     }
 }

@@ -53,6 +53,7 @@
     <Reference Include="XamlBuildTask" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ClipboardHelper.cs" />
     <Compile Include="CostElement.cs" />
     <Compile Include="ElementEditForm.cs">
       <SubType>Form</SubType>
@@ -60,6 +61,7 @@
     <Compile Include="ElementEditForm.Designer.cs">
       <DependentUpon>ElementEditForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="GridHelper.cs" />
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>

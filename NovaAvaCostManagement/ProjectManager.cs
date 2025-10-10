@@ -3,9 +3,6 @@ using System.Collections.Generic;
 
 namespace NovaAvaCostManagement
 {
-    /// <summary>
-    /// Simplified validation result
-    /// </summary>
     public class ValidationResult
     {
         public List<string> Errors { get; set; } = new List<string>();
@@ -16,9 +13,6 @@ namespace NovaAvaCostManagement
         public bool IsValid => !HasErrors;
     }
 
-    /// <summary>
-    /// Basic validator - validates only user-editable fields
-    /// </summary>
     public static class SimpleValidator
     {
         public static ValidationResult ValidateElements(List<CostElement> elements)
@@ -27,31 +21,43 @@ namespace NovaAvaCostManagement
 
             foreach (var element in elements)
             {
-                var errors = element.Validate();
-                foreach (var error in errors)
-                {
-                    result.Errors.Add($"Element {element.Id}: {error}");
-                }
-
-                // Check for duplicate IDs
-                var duplicates = elements.FindAll(e => e.Id == element.Id);
-                if (duplicates.Count > 1)
-                {
-                    result.Warnings.Add($"Duplicate ID found: {element.Id}");
-                }
-
-                // Check for duplicate GUIDs
-                if (!string.IsNullOrEmpty(element.Ident))
-                {
-                    var guidDuplicates = elements.FindAll(e => e.Ident == element.Ident);
-                    if (guidDuplicates.Count > 1)
-                    {
-                        result.Errors.Add($"Duplicate GUID found: {element.Ident}");
-                    }
-                }
+                ValidateElement(element, elements, result);
             }
 
             return result;
+        }
+
+        private static void ValidateElement(CostElement element, List<CostElement> allElements, ValidationResult result)
+        {
+            var errors = element.Validate();
+            foreach (var error in errors)
+            {
+                result.Errors.Add($"Element {element.Id}: {error}");
+            }
+
+            CheckForDuplicateIds(element, allElements, result);
+            CheckForDuplicateGuids(element, allElements, result);
+        }
+
+        private static void CheckForDuplicateIds(CostElement element, List<CostElement> allElements, ValidationResult result)
+        {
+            var duplicates = allElements.FindAll(e => e.Id == element.Id);
+            if (duplicates.Count > 1)
+            {
+                result.Warnings.Add($"Duplicate ID found: {element.Id}");
+            }
+        }
+
+        private static void CheckForDuplicateGuids(CostElement element, List<CostElement> allElements, ValidationResult result)
+        {
+            if (!string.IsNullOrEmpty(element.Ident))
+            {
+                var guidDuplicates = allElements.FindAll(e => e.Ident == element.Ident);
+                if (guidDuplicates.Count > 1)
+                {
+                    result.Errors.Add($"Duplicate GUID found: {element.Ident}");
+                }
+            }
         }
     }
 }
