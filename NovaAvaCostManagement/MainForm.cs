@@ -16,6 +16,7 @@ namespace NovaAvaCostManagement
         private List<CostElement> copiedElements = new List<CostElement>();
         private ViewMode currentViewMode = ViewMode.FlatList;
         private UndoRedoManager undoRedoManager = new UndoRedoManager();
+        private Dictionary<string, object> cellOldValues = new Dictionary<string, object>();
         private bool isRecordingChanges = true;
 
         private DataGridView dataGridView;
@@ -165,7 +166,7 @@ namespace NovaAvaCostManagement
                 ColumnHeadersVisible = true,
                 ColumnHeadersHeight = 30,
                 RowHeadersWidth = 50,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                SelectionMode = DataGridViewSelectionMode.CellSelect,  // Cell selection
                 ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText,
                 EditMode = DataGridViewEditMode.EditOnEnter,
                 MultiSelect = true,
@@ -188,12 +189,23 @@ namespace NovaAvaCostManagement
 
             dataGridView.KeyDown += DataGridView_KeyDown;
             dataGridView.CellValueChanged += DataGridView_CellValueChanged;
-            dataGridView.DoubleClick += (s, args) => EditElement(s, args);
+            dataGridView.CellBeginEdit += DataGridView_CellBeginEdit;
+            dataGridView.CellDoubleClick += DataGridView_CellDoubleClick;  // Changed from DoubleClick
             dataGridView.CellMouseDown += DataGridView_CellMouseDown;
             dataGridView.CellFormatting += DataGridView_CellFormatting;
 
             this.Controls.Add(dataGridView);
         }
+
+        private void DataGridView_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            // Only open edit form on double-click in row header or when Ctrl is held
+            if (e.RowIndex >= 0 && Control.ModifierKeys == Keys.Control)
+            {
+                EditElement(sender, e);
+            }
+        }
+
 
         private void SetupColumns()
         {
@@ -277,6 +289,27 @@ namespace NovaAvaCostManagement
                 }
             };
             dataGridView.Columns.Add(column);
+        }
+
+        private void DataGridView_CellBeginEdit(object sender, DataGridViewCellCancelEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+
+            var element = GetElementAtRow(e.RowIndex);
+            if (element == null) return;
+
+            var column = dataGridView.Columns[e.ColumnIndex];
+            if (column.ReadOnly) return;
+
+            var propertyName = column.DataPropertyName;
+            if (string.IsNullOrEmpty(propertyName)) return;
+
+            var property = typeof(CostElement).GetProperty(propertyName);
+            if (property == null || !property.CanRead) return;
+
+            // Store old value with unique key
+            string key = $"{e.RowIndex}_{e.ColumnIndex}";
+            cellOldValues[key] = property.GetValue(element);
         }
 
         private void DataGridView_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
@@ -403,14 +436,31 @@ namespace NovaAvaCostManagement
             UpdateStatus();
         }
 
+        private void ContextMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            var contextMenu = (ContextMenuStrip)sender;
+            bool hasRowSelection = dataGridView.SelectedRows.Count > 0;
+            bool hasCellSelection = dataGridView.SelectedCells.Count > 0;
+
+            // Enable cell operations if cells are selected
+            contextMenu.Items[0].Enabled = hasCellSelection; // Copy Cells
+            contextMenu.Items[1].Enabled = hasCellSelection; // Paste Cells
+            contextMenu.Items[2].Enabled = hasCellSelection; // Clear Cells
+        }
+
         private void CreateContextMenu()
         {
             var contextMenu = new ContextMenuStrip();
+            contextMenu.Opening += ContextMenu_Opening;
 
+            contextMenu.Items.Add("Copy Cells (Ctrl+C)", null, (s, e) => CopyCellsToClipboard());
+            contextMenu.Items.Add("Paste Cells (Ctrl+V)", null, (s, e) => PasteCellsFromClipboard());
+            contextMenu.Items.Add("Clear Cells (Del)", null, (s, e) => ClearSelectedCells());
+            contextMenu.Items.Add(new ToolStripSeparator());
             contextMenu.Items.Add("Copy Elements", null, (EventHandler)CopyElements);
             contextMenu.Items.Add("Paste Elements at End", null, (EventHandler)PasteElements);
             contextMenu.Items.Add(new ToolStripSeparator());
-            contextMenu.Items.Add("Edit Element (F2)", null, (EventHandler)EditElement);
+            contextMenu.Items.Add("Edit Element (Ctrl+Double-Click)", null, (EventHandler)EditElement);
             contextMenu.Items.Add("View Full Text", null, (EventHandler)ViewFullText);
             contextMenu.Items.Add(new ToolStripSeparator());
             contextMenu.Items.Add("Delete Element", null, (EventHandler)DeleteElement);
@@ -420,9 +470,14 @@ namespace NovaAvaCostManagement
 
         private void DataGridView_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
         {
+            // Right-click context menu
             if (e.Button == MouseButtons.Right && e.RowIndex >= 0 && e.ColumnIndex >= 0)
             {
-                dataGridView.CurrentCell = dataGridView[e.ColumnIndex, e.RowIndex];
+                // Don't change selection if right-clicking on already selected cells
+                if (!dataGridView[e.ColumnIndex, e.RowIndex].Selected)
+                {
+                    dataGridView.CurrentCell = dataGridView[e.ColumnIndex, e.RowIndex];
+                }
             }
         }
 
@@ -498,20 +553,94 @@ namespace NovaAvaCostManagement
             return null;
         }
 
+        private void ClearSelectedCells()
+        {
+            if (dataGridView.SelectedCells.Count == 0) return;
+
+            var changeSet = new ChangeSet("Clear cells");
+
+            foreach (DataGridViewCell cell in dataGridView.SelectedCells)
+            {
+                if (cell.ReadOnly) continue;
+
+                var column = dataGridView.Columns[cell.ColumnIndex];
+                var propertyName = column.DataPropertyName;
+                if (string.IsNullOrEmpty(propertyName)) continue;
+
+                var element = GetElementAtRow(cell.RowIndex);
+                if (element == null) continue;
+
+                var property = typeof(CostElement).GetProperty(propertyName);
+                if (property == null || !property.CanWrite) continue;
+
+                object oldValue = property.GetValue(element);
+                object newValue = null;
+
+                // Determine default value based on property type (C# 7.3 compatible)
+                if (property.PropertyType == typeof(string))
+                {
+                    newValue = "";
+                }
+                else if (property.PropertyType == typeof(decimal))
+                {
+                    newValue = 0m;
+                }
+                else if (property.PropertyType == typeof(int))
+                {
+                    newValue = 0;
+                }
+                else if (property.PropertyType == typeof(bool))
+                {
+                    newValue = false;
+                }
+
+                changeSet.AddChange(new CellChange(
+                    cell.RowIndex,
+                    column.Name,
+                    propertyName,
+                    oldValue,
+                    newValue,
+                    element
+                ));
+
+                property.SetValue(element, newValue);
+                cell.Value = newValue;
+            }
+
+            if (changeSet.Changes.Count > 0)
+            {
+                undoRedoManager.RecordChange(changeSet);
+                UpdateUndoRedoButtons();
+            }
+
+            RefreshGrid();
+            SetStatus($"Cleared {changeSet.Changes.Count} cell(s)");
+        }
+
         private void DataGridView_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Control && e.KeyCode == Keys.Z)
             {
                 PerformUndo();
                 e.Handled = true;
+                e.SuppressKeyPress = true;  // Added
             }
             else if (e.Control && e.KeyCode == Keys.Y)
             {
                 PerformRedo();
                 e.Handled = true;
+                e.SuppressKeyPress = true;  // Added
             }
             else if (e.Control && e.KeyCode == Keys.C)
             {
+                // Check if we're in edit mode
+                if (dataGridView.IsCurrentCellInEditMode)
+                {
+                    // Let the default copy behavior work for the text in the cell editor
+                    return;
+                }
+
+                // Check if we have full rows selected or just cells
                 if (dataGridView.SelectedRows.Count > 0)
                 {
                     CopyElements(sender, e);
@@ -521,38 +650,54 @@ namespace NovaAvaCostManagement
                     CopyCellsToClipboard();
                 }
                 e.Handled = true;
+                e.SuppressKeyPress = true;  // Added
             }
             else if (e.Control && e.KeyCode == Keys.V)
             {
-                if (dataGridView.SelectedCells.Count > 0)
+                // Check if we're in edit mode
+                if (dataGridView.IsCurrentCellInEditMode)
                 {
-                    PasteCellsFromClipboard();
+                    // Let the default paste behavior work for the text in the cell editor
+                    return;
                 }
-                else
-                {
-                    PasteElements(sender, e);
-                }
+
+                // Always paste to cells (works for both cell and row selection)
+                PasteCellsFromClipboard();
                 e.Handled = true;
+                e.SuppressKeyPress = true;  // Added
             }
             else if (e.KeyCode == Keys.Delete && !dataGridView.IsCurrentCellInEditMode)
             {
-                DeleteElement(sender, e);
+                // If full rows are selected, delete elements
+                // If only cells are selected, clear cell values
+                if (dataGridView.SelectedRows.Count > 0)
+                {
+                    DeleteElement(sender, e);
+                }
+                else
+                {
+                    ClearSelectedCells();
+                }
                 e.Handled = true;
+                e.SuppressKeyPress = true;  // Added
             }
             else if (e.Control && e.KeyCode == Keys.N)
             {
                 AddElement(sender, e);
                 e.Handled = true;
+                e.SuppressKeyPress = true;  // Added
             }
             else if (e.KeyCode == Keys.F2 && !dataGridView.IsCurrentCellInEditMode)
             {
                 EditElement(sender, e);
                 e.Handled = true;
+                e.SuppressKeyPress = true;  // Added
             }
             else if (e.Control && e.KeyCode == Keys.W)
             {
                 ToggleWbsView(sender, e);
                 e.Handled = true;
+                e.SuppressKeyPress = true;  // Added
             }
         }
 
@@ -623,76 +768,109 @@ namespace NovaAvaCostManagement
                     return;
                 }
 
-                var changeSet = new ChangeSet("Paste cells");
-
-                // Get starting cell
+                // Get starting cell - use top-left of selection
                 if (dataGridView.CurrentCell == null)
                 {
                     SetStatus("Please select a cell first");
                     return;
                 }
 
+                // Find the top-left cell of the selection
                 int startRow = dataGridView.CurrentCell.RowIndex;
                 int startCol = dataGridView.CurrentCell.ColumnIndex;
+
+                if (dataGridView.SelectedCells.Count > 0)
+                {
+                    int minRow = int.MaxValue;
+                    int minCol = int.MaxValue;
+
+                    foreach (DataGridViewCell cell in dataGridView.SelectedCells)
+                    {
+                        if (cell.RowIndex < minRow) minRow = cell.RowIndex;
+                        if (cell.ColumnIndex < minCol) minCol = cell.ColumnIndex;
+                    }
+
+                    startRow = minRow;
+                    startCol = minCol;
+                }
 
                 // Parse clipboard data (Excel format: tabs separate columns, newlines separate rows)
                 string[] rows = clipboardText.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
 
+                var changeSet = new ChangeSet("Paste cells");
                 int pastedCells = 0;
-                for (int i = 0; i < rows.Length; i++)
+
+                // Temporarily disable change recording to avoid duplicate undo entries
+                bool wasRecording = isRecordingChanges;
+                isRecordingChanges = false;
+
+                try
                 {
-                    if (string.IsNullOrEmpty(rows[i])) continue;
-
-                    int targetRow = startRow + i;
-                    if (targetRow >= dataGridView.Rows.Count) break;
-
-                    string[] cells = rows[i].Split('\t');
-
-                    for (int j = 0; j < cells.Length; j++)
+                    for (int i = 0; i < rows.Length; i++)
                     {
-                        int targetCol = startCol + j;
-                        if (targetCol >= dataGridView.Columns.Count) break;
+                        if (string.IsNullOrEmpty(rows[i]) && i == rows.Length - 1) continue; // Skip last empty line
 
-                        var column = dataGridView.Columns[targetCol];
+                        int targetRow = startRow + i;
+                        if (targetRow >= dataGridView.Rows.Count) break;
 
-                        // Skip read-only columns
-                        if (column.ReadOnly) continue;
+                        string[] cells = rows[i].Split('\t');
 
-                        var element = GetElementAtRow(targetRow);
-                        if (element == null) continue;
-
-                        string propertyName = column.DataPropertyName;
-                        var property = typeof(CostElement).GetProperty(propertyName);
-                        if (property == null || !property.CanWrite) continue;
-
-                        // Get old value
-                        object oldValue = property.GetValue(element);
-                        string newValueStr = cells[j].Trim();
-
-                        // Convert and set new value
-                        try
+                        for (int j = 0; j < cells.Length; j++)
                         {
-                            object newValue = ConvertValue(newValueStr, property.PropertyType);
+                            int targetCol = startCol + j;
+                            if (targetCol >= dataGridView.Columns.Count) break;
 
-                            // Record change
-                            changeSet.AddChange(new CellChange(
-                                targetRow,
-                                column.Name,
-                                propertyName,
-                                oldValue,
-                                newValue,
-                                element
-                            ));
+                            var column = dataGridView.Columns[targetCol];
 
-                            property.SetValue(element, newValue);
-                            pastedCells++;
-                        }
-                        catch
-                        {
-                            // Skip cells that can't be converted
-                            continue;
+                            // Skip read-only columns
+                            if (column.ReadOnly) continue;
+
+                            var element = GetElementAtRow(targetRow);
+                            if (element == null) continue;
+
+                            string propertyName = column.DataPropertyName;
+                            if (string.IsNullOrEmpty(propertyName)) continue;
+
+                            var property = typeof(CostElement).GetProperty(propertyName);
+                            if (property == null || !property.CanWrite) continue;
+
+                            // Get old value
+                            object oldValue = property.GetValue(element);
+                            string newValueStr = cells[j];
+
+                            // Convert and set new value
+                            try
+                            {
+                                object newValue = ConvertValue(newValueStr, property.PropertyType);
+
+                                // Only record if value changed
+                                if (!Equals(oldValue, newValue))
+                                {
+                                    // Record change
+                                    changeSet.AddChange(new CellChange(
+                                        targetRow,
+                                        column.Name,
+                                        propertyName,
+                                        oldValue,
+                                        newValue,
+                                        element
+                                    ));
+
+                                    property.SetValue(element, newValue);
+                                    pastedCells++;
+                                }
+                            }
+                            catch
+                            {
+                                continue;
+                            }
                         }
                     }
+                }
+                finally
+                {
+                    // Restore recording state
+                    isRecordingChanges = wasRecording;
                 }
 
                 if (changeSet.Changes.Count > 0)
@@ -701,7 +879,9 @@ namespace NovaAvaCostManagement
                     UpdateUndoRedoButtons();
                 }
 
-                RefreshGrid();
+                // Refresh the grid to show changes
+                dataGridView.Refresh();
+
                 SetStatus($"Pasted {pastedCells} cell(s)");
             }
             catch (Exception ex)
@@ -718,6 +898,7 @@ namespace NovaAvaCostManagement
                 if (targetType == typeof(string)) return "";
                 if (targetType == typeof(decimal)) return 0m;
                 if (targetType == typeof(int)) return 0;
+                if (targetType == typeof(bool)) return false;
                 return null;
             }
 
@@ -757,7 +938,21 @@ namespace NovaAvaCostManagement
 
         private void CopyElements(object sender, EventArgs e)
         {
-            if (dataGridView.SelectedRows.Count == 0)
+            // Get unique rows from selection
+            var selectedRows = new HashSet<DataGridViewRow>();
+
+            if (dataGridView.SelectedRows.Count > 0)
+            {
+                foreach (DataGridViewRow row in dataGridView.SelectedRows)
+                    selectedRows.Add(row);
+            }
+            else if (dataGridView.SelectedCells.Count > 0)
+            {
+                foreach (DataGridViewCell cell in dataGridView.SelectedCells)
+                    selectedRows.Add(dataGridView.Rows[cell.RowIndex]);
+            }
+
+            if (selectedRows.Count == 0)
             {
                 MessageBox.Show("Please select one or more rows to copy.", "No Selection",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -768,7 +963,7 @@ namespace NovaAvaCostManagement
             {
                 copiedElements.Clear();
 
-                foreach (DataGridViewRow row in dataGridView.SelectedRows)
+                foreach (var row in selectedRows)
                 {
                     var element = GetElementFromRow(row);
                     if (element != null)
@@ -841,64 +1036,73 @@ namespace NovaAvaCostManagement
             if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
             if (!isRecordingChanges) return;
 
-            var element = GetElementAtCurrentRow();
+            var element = GetElementAtRow(e.RowIndex);
             if (element == null) return;
 
             var row = dataGridView.Rows[e.RowIndex];
             var column = dataGridView.Columns[e.ColumnIndex];
+            var propertyName = column.DataPropertyName;
 
-            switch (column.DataPropertyName)
+            if (string.IsNullOrEmpty(propertyName)) return;
+
+            var property = typeof(CostElement).GetProperty(propertyName);
+            if (property == null || !property.CanWrite) return;
+
+            // Get old value from tracking dictionary
+            string key = $"{e.RowIndex}_{e.ColumnIndex}";
+
+            // If we don't have an old value tracked, skip this change
+            // (it's likely a programmatic change, not user edit)
+            if (!cellOldValues.ContainsKey(key))
             {
-                case "Name":
-                    element.Name = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "Description":
-                    element.Description = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "SpecFilter":
-                    element.SpecFilter = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "SpecName":
-                    element.SpecName = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "SpecSize":
-                    element.SpecSize = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "SpecType":
-                    element.SpecType = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "SpecManufacturer":
-                    element.SpecManufacturer = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "SpecMaterial":
-                    element.SpecMaterial = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "Ident":
-                    element.Ident = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "Text":
-                    element.Text = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "LongText":
-                    element.LongText = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "Qty":
-                    element.Qty = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "QtyResult":
-                    if (decimal.TryParse(row.Cells[e.ColumnIndex].Value?.ToString(), out decimal qty))
-                        element.QtyResult = qty;
-                    break;
-                case "Qu":
-                    element.Qu = row.Cells[e.ColumnIndex].Value?.ToString() ?? "";
-                    break;
-                case "Up":
-                    if (decimal.TryParse(row.Cells[e.ColumnIndex].Value?.ToString(), out decimal up))
-                        element.Up = up;
-                    break;
+                return;
             }
 
-            // Refresh row to update calculated total
+            object oldValue = cellOldValues[key];
+
+            // Get new value from cell
+            object newValue = row.Cells[e.ColumnIndex].Value;
+
+            // Convert and set the new value
+            try
+            {
+                object convertedValue = ConvertValue(newValue?.ToString() ?? "", property.PropertyType);
+
+                // Only record change if value actually changed
+                if (!Equals(oldValue, convertedValue))
+                {
+                    // Create change record for undo/redo
+                    var changeSet = new ChangeSet($"Edit {column.HeaderText}");
+                    changeSet.AddChange(new CellChange(
+                        e.RowIndex,
+                        column.Name,
+                        propertyName,
+                        oldValue,
+                        convertedValue,
+                        element
+                    ));
+
+                    undoRedoManager.RecordChange(changeSet);
+                    UpdateUndoRedoButtons();
+
+                    // Apply the value
+                    property.SetValue(element, convertedValue);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Restore old value if conversion fails
+                row.Cells[e.ColumnIndex].Value = oldValue;
+                MessageBox.Show($"Invalid value: {ex.Message}", "Validation Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                // Clean up tracking dictionary
+                cellOldValues.Remove(key);
+            }
+
+            // Refresh row to update calculated fields
             dataGridView.InvalidateRow(e.RowIndex);
         }
 
